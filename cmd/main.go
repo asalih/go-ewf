@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/asalih/ewf"
+	"github.com/asalih/go-ewf"
 )
 
 func main() {
