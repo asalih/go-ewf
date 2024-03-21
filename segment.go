@@ -9,6 +9,11 @@ import (
 	"sort"
 )
 
+const (
+	evfSig = "EVF\x09\x0d\x0a\xff\x00"
+	lvfSig = "LVF\x09\x0d\x0a\xff\x00"
+)
+
 type EWFHeader struct {
 	Signature     [8]byte
 	FieldsStart   uint8
@@ -43,7 +48,7 @@ func NewEWFSegment(fh io.ReadSeeker, ewf *EWF) (*EWFSegment, error) {
 	volume := ewf.Volume
 
 	sig := string(ewfHeader.Signature[:])
-	if sig != "EVF\x09\x0d\x0a\xff\x00" && sig != "LVF\x09\x0d\x0a\xff\x00" {
+	if sig != evfSig && sig != lvfSig {
 		return nil, fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
 	}
 

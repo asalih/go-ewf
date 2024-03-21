@@ -23,10 +23,17 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 
-	ewfImg, err := ewf.NewEWF(f)
+	ewfImg, err := ewf.OpenEWF(f)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
 	fmt.Println("Size: ", ewfImg.Size)
+
+	buf := make([]byte, 1024)
+	_, err = ewfImg.ReadAt(buf, 0)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
 }

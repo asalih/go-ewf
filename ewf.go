@@ -1,7 +1,6 @@
 package ewf
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"sort"
@@ -43,8 +42,11 @@ type EWF struct {
 	Size           int64
 }
 
-func NewEWF(fh io.ReadSeeker) (*EWF, error) {
+func CreateEWF(dest io.WriterAt) (*EWF, error) {
+	return nil, nil
+}
 
+func OpenEWF(fh io.ReadSeeker) (*EWF, error) {
 	ewf := &EWF{
 		Segments:       []*EWFSegment{},
 		SegmentOffsets: []uint32{},
@@ -80,7 +82,7 @@ func NewEWF(fh io.ReadSeeker) (*EWF, error) {
 	ewf.Segments = append(ewf.Segments, segment)
 
 	if ewf.Header == nil || ewf.Volume == nil || len(ewf.Segments) == 0 {
-		return nil, fmt.Errorf("Failed to load EWF")
+		return nil, fmt.Errorf("failed to load EWF")
 	}
 
 	ewf.ChunkSize = ewf.Volume.SectorCount * ewf.Volume.SectorSize
@@ -100,13 +102,11 @@ func NewEWF(fh io.ReadSeeker) (*EWF, error) {
 }
 
 func (ewf *EWF) ReadAt(p []byte, off int64) (n int, err error) {
-
 	sectorOffset := off / int64(ewf.Volume.SectorSize)
 	length := len(p)
 	sectorCount := (length + int(ewf.Volume.SectorSize) - 1) / int(ewf.Volume.SectorSize)
-	//fmt.Printf("EWF::read(%d, %d)\n", off, length)
 
-	buf := ewf.readSectors(uint32(sectorOffset), uint32(sectorCount))
+	buf, err := ewf.readSectors(uint32(sectorOffset), uint32(sectorCount))
 	if err != nil {
 		return 0, err
 	}
@@ -116,13 +116,17 @@ func (ewf *EWF) ReadAt(p []byte, off int64) (n int, err error) {
 	return
 }
 
-func (ewf *EWF) readSectors(sector uint32, count uint32) []byte {
-	// log.Debugf("EWF::read_sectors(0x%x, 0x%x)", sector, count)
-	r := [][]byte{}
+func (ewf *EWF) WriteAt(p []byte, off int64) (n int, err error) {
+	return 0, nil
+}
+
+func (ewf *EWF) readSectors(sector uint32, count uint32) ([]byte, error) {
+	buf := make([]byte, 0)
 
 	segmentIdx := sort.Search(len(ewf.SegmentOffsets), func(i int) bool {
 		return ewf.SegmentOffsets[i] > sector
 	})
+
 	for count > 0 {
 		segment := ewf.Segments[segmentIdx]
 
@@ -131,17 +135,16 @@ func (ewf *EWF) readSectors(sector uint32, count uint32) []byte {
 
 		dat, err := segment.ReadSectors(int64(sector), int(segmentSectors))
 		if err != nil {
-			//TODO: check
-			return nil
+			return nil, err
 		}
-		r = append(r, dat)
+		buf = append(buf, dat...)
 		sector += segmentSectors
 		count -= segmentSectors
 
 		segmentIdx++
 	}
 
-	return bytes.Join(r, []byte{})
+	return buf, nil
 }
 
 func min(a, b uint32) uint32 {
