@@ -1,7 +1,6 @@
 package ewf
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -21,14 +20,20 @@ type EWFHeader struct {
 	FieldsEnd     uint16
 }
 
+func (e *EWFHeader) Decode(fh io.Reader) error {
+	return binary.Read(fh, binary.LittleEndian, e)
+}
+
+func (e *EWFHeader) Encode(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, e)
+}
+
 type EWFSegment struct {
-	fh           io.ReadSeeker
-	ewf          *EWF
 	ewfheader    *EWFHeader
-	header       *EWFHeaderSection
-	volume       *EWFVolumeSection
+	Header       *EWFHeaderSection
+	Volume       *EWFVolumeSection
 	sections     []*EWFSectionDescriptor
-	tables       []*EWFTableSection
+	Tables       []*EWFTableSection
 	tableOffsets []int64
 	chunkCount   int
 	sectorCount  int
@@ -37,29 +42,10 @@ type EWFSegment struct {
 	offset       int64
 }
 
-func NewEWFSegment(fh io.ReadSeeker, ewf *EWF) (*EWFSegment, error) {
-	var ewfHeader EWFHeader
-	err := binary.Read(fh, binary.LittleEndian, &ewfHeader)
-	if err != nil {
-		return nil, err
-	}
-
-	header := ewf.Header
-	volume := ewf.Volume
-
-	sig := string(ewfHeader.Signature[:])
-	if sig != evfSig && sig != lvfSig {
-		return nil, fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
-	}
-
-	seg := &EWFSegment{
-		fh:           fh,
-		ewf:          ewf,
-		ewfheader:    &ewfHeader,
-		header:       header,
-		volume:       volume,
+func NewEWFSegment() *EWFSegment {
+	return &EWFSegment{
 		sections:     make([]*EWFSectionDescriptor, 0),
-		tables:       make([]*EWFTableSection, 0),
+		Tables:       make([]*EWFTableSection, 0),
 		tableOffsets: make([]int64, 0),
 		chunkCount:   0,
 		sectorCount:  0,
@@ -67,52 +53,68 @@ func NewEWFSegment(fh io.ReadSeeker, ewf *EWF) (*EWFSegment, error) {
 		size:         0,
 		offset:       0,
 	}
+}
+
+func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
+	ewfHeader := new(EWFHeader)
+	err := ewfHeader.Decode(fh)
+	if err != nil {
+		return err
+	}
+	sig := string(ewfHeader.Signature[:])
+	if sig != evfSig && sig != lvfSig {
+		return fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
+	}
+	seg.ewfheader = ewfHeader
 
 	offset := int64(0)
 	sectorOffset := int64(0)
 
 	for {
-		section, err := NewEWFSectionDescriptor(fh, seg)
+		section, err := NewEWFSectionDescriptor(fh)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
+		fmt.Println(section.Type)
 		seg.sections = append(seg.sections, section)
 
-		if section.Type == "header" || section.Type == "header2" && seg.header == nil {
-			h, err := NewEWFHeaderSection(fh, section, seg)
+		if section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2 && seg.Header == nil {
+			h := new(EWFHeaderSection)
+			err := h.Decode(fh, section, seg)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			seg.header = h
+			seg.Header = h
 		}
 
-		if section.Type == "disk" || section.Type == "volume" && seg.volume == nil {
-			v, err := NewEWFVolumeSection(fh, section, seg)
+		if section.Type == EWF_SECTION_TYPE_DISK || section.Type == EWF_SECTION_TYPE_VOLUME && seg.Volume == nil {
+			v := new(EWFVolumeSection)
+			err := v.Decode(fh, section, seg)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			seg.volume = v
+			seg.Volume = v
 		}
 
-		if section.Type == "table" {
-			table, err := NewEWFTableSection(fh, section, seg)
+		if section.Type == EWF_SECTION_TYPE_TABLE {
+			table := new(EWFTableSection)
+			err := table.Decode(fh, section, seg)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			if sectorOffset != 0 {
 				seg.tableOffsets = append(seg.tableOffsets, sectorOffset)
 			}
 
-			table.Offset = sectorOffset * int64(seg.volume.SectorSize)
+			table.Offset = sectorOffset * int64(seg.Volume.Data.GetSectorSize())
 			table.SectorOffset = sectorOffset
 			sectorOffset += table.SectorCount
 
-			seg.tables = append(seg.tables, table)
+			seg.Tables = append(seg.Tables, table)
 		}
 
-		if section.Next == uint64(offset) || section.Type == "done" {
+		if section.Next == uint64(offset) || section.Type == EWF_SECTION_TYPE_DONE {
 			break
 		}
 
@@ -120,43 +122,39 @@ func NewEWFSegment(fh io.ReadSeeker, ewf *EWF) (*EWFSegment, error) {
 		fh.Seek(offset, io.SeekStart)
 	}
 
-	for _, t := range seg.tables {
+	for _, t := range seg.Tables {
 		seg.chunkCount += int(t.Header.NumEntries)
 	}
 
-	seg.sectorCount = seg.chunkCount * int(seg.volume.SectorCount)
-	seg.sectorOffset = -1
-	seg.size = seg.chunkCount * int(seg.volume.SectorCount) * int(seg.volume.SectorSize)
-	seg.offset = -1
+	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
+	seg.size = seg.chunkCount * int(seg.Volume.Data.GetSectorCount()) * int(seg.Volume.Data.GetSectorSize())
 
-	return seg, nil
+	return nil
 }
 
 func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
-	// log.Debugf("EWFSegment::read_sectors(0x%x, 0x%x)", sector, count)
-
 	segmentSector := sector - int64(seg.sectorOffset)
-	r := make([][]byte, 0)
+	buf := make([]byte, 0)
 
 	tableIdx := sort.Search(len(seg.tableOffsets), func(i int) bool { return seg.tableOffsets[i] > segmentSector })
 	for count > 0 {
-		table := seg.tables[tableIdx]
+		table := seg.Tables[tableIdx]
 
 		tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
 		tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
 
 		data := table.readSectors(uint64(segmentSector), uint64(tableSectors))
 
-		r = append(r, data)
+		buf = append(buf, data...)
 
 		segmentSector += tableSectors
 		count -= int(tableSectors)
 
 		tableIdx++
-		if tableIdx >= len(seg.tables) {
+		if tableIdx >= len(seg.Tables) {
 			break
 		}
 	}
 
-	return bytes.Join(r, []byte{}), nil
+	return buf, nil
 }

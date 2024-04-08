@@ -5,21 +5,71 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
+	"hash/adler32"
 	"io"
 	"math"
 )
 
 type EWFTableSectionHeader struct {
-	NumEntries uint32
-	Pad        uint32
-	BaseOffset uint64
-	Pad2       uint32
-	Checksum   uint32
-	Entries    []uint32
+	NumEntries     uint32
+	Pad            uint32
+	BaseOffset     uint64
+	Pad2           uint32
+	Checksum       uint32
+	Entries        []uint32
+	FooterChecksum uint32
+}
+
+func (e *EWFTableSectionHeader) size() int {
+	return binary.Size(e.NumEntries) +
+		binary.Size(e.Pad) +
+		binary.Size(e.BaseOffset) +
+		binary.Size(e.Pad2) +
+		binary.Size(e.Checksum) +
+		binary.Size(e.Entries) +
+		binary.Size(e.FooterChecksum)
+}
+
+func (e *EWFTableSectionHeader) serialize() (buf []byte, err error) {
+	bbuf := bytes.NewBuffer(nil)
+	err = binary.Write(bbuf, binary.LittleEndian, e.NumEntries)
+	if err != nil {
+		return
+	}
+
+	err = binary.Write(bbuf, binary.LittleEndian, e.Pad)
+	if err != nil {
+		return
+	}
+	err = binary.Write(bbuf, binary.LittleEndian, e.BaseOffset)
+	if err != nil {
+		return
+	}
+	err = binary.Write(bbuf, binary.LittleEndian, e.Pad2)
+	if err != nil {
+		return
+	}
+	err = binary.Write(bbuf, binary.LittleEndian, e.Checksum)
+	if err != nil {
+		return
+	}
+	err = binary.Write(bbuf, binary.LittleEndian, e.Entries)
+	if err != nil {
+		return
+	}
+
+	buf = bbuf.Bytes()
+	sum := adler32.Checksum(buf)
+	e.FooterChecksum = sum
+
+	buf = binary.LittleEndian.AppendUint32(buf, sum)
+
+	return
 }
 
 type EWFTableSection struct {
-	fh           io.ReadSeeker
+	fh io.ReadSeeker
+
 	Section      *EWFSectionDescriptor
 	Segment      *EWFSegment
 	Header       *EWFTableSectionHeader
@@ -30,29 +80,63 @@ type EWFTableSection struct {
 	Offset       int64
 }
 
-func NewEWFTableSection(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) (*EWFTableSection, error) {
-	t := &EWFTableSection{
-		fh:      fh,
-		Section: section,
-		Segment: segment,
+func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
+
+	d.fh = fh
+	d.Segment = segment
+	d.Section = section
+
+	if _, err := d.fh.Seek(d.Section.DataOffset, io.SeekStart); err != nil {
+		return err
 	}
 
-	if _, err := t.fh.Seek(t.Section.DataOffset, io.SeekStart); err != nil {
-		return nil, err
-	}
-
-	err := t.readHeader()
+	err := d.readHeader()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	t.BaseOffset = int64(t.Header.BaseOffset)
+	d.BaseOffset = int64(d.Header.BaseOffset)
 
-	t.SectorCount = int64(t.Header.NumEntries) * int64(segment.volume.SectorCount)
-	t.SectorOffset = -1 // uninitialized
-	t.Size = t.SectorCount * int64(segment.volume.SectorSize)
+	d.SectorCount = int64(d.Header.NumEntries) * int64(segment.Volume.Data.GetSectorCount())
+	d.SectorOffset = -1 // uninitialized
+	d.Size = d.SectorCount * int64(segment.Volume.Data.GetSectorSize())
 
-	return t, nil
+	return nil
+}
+
+func (d *EWFTableSection) Encode(ewf *EWFWriter) error {
+	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE)
+
+	tableSz := d.Header.size()
+	desc.Size = uint64(tableSz)
+	desc.Next = uint64(ewf.position) + DescriptorSize + desc.Size
+
+	_, _, err := WriteWithSum(ewf, desc)
+	if err != nil {
+		return err
+	}
+
+	headerData, err := d.Header.serialize()
+	if err != nil {
+		return err
+	}
+
+	_, err = ewf.Write(headerData)
+	if err != nil {
+		return err
+	}
+
+	desc = NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE2)
+	desc.Size = uint64(tableSz)
+	desc.Next = uint64(ewf.position) + DescriptorSize + desc.Size
+
+	_, _, err = WriteWithSum(ewf, desc)
+	if err != nil {
+		return err
+	}
+
+	_, err = ewf.Write(headerData)
+	return err
 }
 
 func (t *EWFTableSection) readHeader() error {
@@ -93,9 +177,21 @@ func (t *EWFTableSection) readHeader() error {
 		return err
 	}
 
+	err = binary.Read(t.fh, binary.LittleEndian, &section.FooterChecksum)
+	if err != nil {
+		return err
+	}
+
 	t.Header = &section
 
 	return nil
+}
+
+func (t *EWFTableSection) addEntry(offset uint32) {
+	t.Header.NumEntries++
+	//its always compressed
+	e := offset | (1 << 31)
+	t.Header.Entries = append(t.Header.Entries, e)
 }
 
 func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
@@ -130,7 +226,7 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 
 	// Non compressed chunks have a 4 byte checksum
 	if !compressed {
-		chunkSize -= 4
+		chunkSize -= ChecksumSize
 	}
 
 	if _, err := t.fh.Seek(int64(chunkOffset), io.SeekStart); err != nil {
@@ -147,19 +243,23 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		defer reader.Close()
 
-		return io.ReadAll(reader)
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
 	}
 
 	return buf, nil
 }
 
 func (ets *EWFTableSection) readSectors(sector uint64, count uint64) []byte {
-	// log.Debug("EWFTableSection::read_sectors(0x%x, 0x%x)", sector, count)
-	var r [][]byte
+	allBuf := make([]byte, 0)
 
-	chunkSectorCount := ets.Segment.ewf.Volume.SectorCount
-	sectorSize := ets.Segment.ewf.Volume.SectorSize
+	chunkSectorCount := ets.Segment.Volume.Data.GetSectorCount()
+	sectorSize := ets.Segment.Volume.Data.GetSectorSize()
 
 	tableSector := sector - uint64(ets.SectorOffset)
 	tableChunk := tableSector / uint64(chunkSectorCount)
@@ -180,12 +280,12 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) []byte {
 		if chunkPos != 0 || tableSectors != uint64(chunkSectorCount) {
 			buf = buf[chunkPos:chunkEnd]
 		}
-		r = append(r, buf)
+		allBuf = append(allBuf, buf...)
 
 		count -= tableSectors
 		tableSector += tableSectors
 		tableChunk += 1
 	}
 
-	return bytes.Join(r, []byte{})
+	return allBuf
 }

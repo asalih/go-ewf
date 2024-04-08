@@ -15,11 +15,21 @@ type EWFSectionDescriptorData struct {
 	Checksum uint32
 }
 
+var DescriptorSize = uint64(binary.Size(&EWFSectionDescriptorData{}))
+
+func NewEWFSectionDescriptorData(typeStr string) *EWFSectionDescriptorData {
+	desc := EWFSectionDescriptorData{
+		Pad: [40]byte{},
+	}
+	copy(desc.Type[:], typeStr)
+	return &desc
+}
+
 type EWFSectionDescriptor struct {
-	fh         io.ReadSeeker
-	segment    *EWFSegment
+	fh     io.ReadSeeker
+	offset int64
+
 	Descriptor *EWFSectionDescriptorData
-	offset     int64
 	Type       string
 	Next       uint64
 	Size       uint64
@@ -27,7 +37,7 @@ type EWFSectionDescriptor struct {
 	DataOffset int64
 }
 
-func NewEWFSectionDescriptor(fh io.ReadSeeker, segment *EWFSegment) (*EWFSectionDescriptor, error) {
+func NewEWFSectionDescriptor(fh io.ReadSeeker) (*EWFSectionDescriptor, error) {
 	offset, err := fh.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return nil, err
@@ -38,16 +48,15 @@ func NewEWFSectionDescriptor(fh io.ReadSeeker, segment *EWFSegment) (*EWFSection
 		return nil, err
 	}
 
-	size := uint64(descriptor.Size) - 0x4C
 	dataOffset, _ := fh.Seek(0, io.SeekCurrent)
 
 	return &EWFSectionDescriptor{
 		fh:         fh,
-		segment:    segment,
 		offset:     offset,
+		Descriptor: &descriptor,
 		Type:       string(bytes.TrimRight(descriptor.Type[:], "\x00")),
 		Next:       descriptor.Next,
-		Size:       size,
+		Size:       uint64(descriptor.Size),
 		Checksum:   descriptor.Checksum,
 		DataOffset: dataOffset,
 	}, nil
