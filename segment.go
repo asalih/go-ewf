@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sort"
 )
 
 const (
@@ -24,17 +23,19 @@ func (e *EWFHeader) Decode(fh io.Reader) error {
 	return binary.Read(fh, binary.LittleEndian, e)
 }
 
-func (e *EWFHeader) Encode(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, e)
+func (e *EWFHeader) Encode(ewf io.WriteSeeker) error {
+	return binary.Write(ewf, binary.LittleEndian, e)
 }
 
 type EWFSegment struct {
-	ewfheader    *EWFHeader
-	Header       *EWFHeaderSection
-	Volume       *EWFVolumeSection
-	sections     []*EWFSectionDescriptor
-	Tables       []*EWFTableSection
-	tableOffsets []int64
+	ewfheader *EWFHeader
+	Header    *EWFHeaderSection
+	Volume    *EWFVolumeSection
+	Table     *EWFTableSection
+	Digest    *EWFDigestSection
+
+	SectionDescriptors []*EWFSectionDescriptor
+
 	chunkCount   int
 	sectorCount  int
 	sectorOffset int
@@ -44,9 +45,8 @@ type EWFSegment struct {
 
 func NewEWFSegment() *EWFSegment {
 	return &EWFSegment{
-		sections:     make([]*EWFSectionDescriptor, 0),
-		Tables:       make([]*EWFTableSection, 0),
-		tableOffsets: make([]int64, 0),
+		SectionDescriptors: make([]*EWFSectionDescriptor, 0),
+
 		chunkCount:   0,
 		sectorCount:  0,
 		sectorOffset: 0,
@@ -76,7 +76,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 			return err
 		}
 		fmt.Println(section.Type)
-		seg.sections = append(seg.sections, section)
+		seg.SectionDescriptors = append(seg.SectionDescriptors, section)
 
 		if section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2 && seg.Header == nil {
 			h := new(EWFHeaderSection)
@@ -104,14 +104,23 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 			}
 
 			if sectorOffset != 0 {
-				seg.tableOffsets = append(seg.tableOffsets, sectorOffset)
+				seg.Table.Offset = sectorOffset
 			}
 
-			table.Offset = sectorOffset * int64(seg.Volume.Data.GetSectorSize())
 			table.SectorOffset = sectorOffset
 			sectorOffset += table.SectorCount
 
-			seg.Tables = append(seg.Tables, table)
+			seg.Table = table
+		}
+
+		if section.Type == EWF_SECTION_TYPE_DIGEST {
+			dig := new(EWFDigestSection)
+			err := dig.Decode(fh, section, seg)
+			if err != nil {
+				return err
+			}
+
+			seg.Digest = dig
 		}
 
 		if section.Next == uint64(offset) || section.Type == EWF_SECTION_TYPE_DONE {
@@ -122,9 +131,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 		fh.Seek(offset, io.SeekStart)
 	}
 
-	for _, t := range seg.Tables {
-		seg.chunkCount += int(t.Header.NumEntries)
-	}
+	seg.chunkCount += int(seg.Table.Header.NumEntries)
 
 	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
 	seg.size = seg.chunkCount * int(seg.Volume.Data.GetSectorCount()) * int(seg.Volume.Data.GetSectorSize())
@@ -136,25 +143,17 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	segmentSector := sector - int64(seg.sectorOffset)
 	buf := make([]byte, 0)
 
-	tableIdx := sort.Search(len(seg.tableOffsets), func(i int) bool { return seg.tableOffsets[i] > segmentSector })
-	for count > 0 {
-		table := seg.Tables[tableIdx]
+	table := seg.Table
 
-		tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
-		tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
+	tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
+	tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
 
-		data := table.readSectors(uint64(segmentSector), uint64(tableSectors))
+	data := table.readSectors(uint64(segmentSector), uint64(tableSectors))
 
-		buf = append(buf, data...)
+	buf = append(buf, data...)
 
-		segmentSector += tableSectors
-		count -= int(tableSectors)
-
-		tableIdx++
-		if tableIdx >= len(seg.Tables) {
-			break
-		}
-	}
+	segmentSector += tableSectors
+	count -= int(tableSectors)
 
 	return buf, nil
 }

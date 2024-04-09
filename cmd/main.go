@@ -74,8 +74,8 @@ func main() {
 	/* ------- READERS --------*/
 
 	// e01Files, err := filepath.Glob("./testdata/esifirbir.E01")
-	e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
-	// e01Files, err := filepath.Glob("./testdata/testimage.E01")
+	// e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
+	e01Files, err := filepath.Glob("./testdata/testimage.E01")
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

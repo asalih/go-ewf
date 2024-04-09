@@ -1,8 +1,11 @@
 package ewf
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
 	"encoding/binary"
 	"errors"
+	"hash"
 	"io"
 	"sync"
 )
@@ -22,6 +25,9 @@ type EWFWriter struct {
 	sectorsPosition int64
 	dataSize        int64
 	buf             []byte
+
+	md5Hasher  hash.Hash
+	sha1Hasher hash.Hash
 
 	Segment       *EWFSegment
 	SegmentOffset uint32
@@ -55,20 +61,21 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	ewf.Segment.Header.CategoryName = "main"
 	ewf.Segment.Header.NofCategories = "1"
 	ewf.Segment.Header.MediaInfo = make(map[string]string)
-	ewf.Segment.tableOffsets = []int64{0}
 
 	ewf.Segment.Volume = &EWFVolumeSection{
 		Data: DefaultVolume(),
 	}
 
-	ewf.Segment.Tables = []*EWFTableSection{
-		{
-
-			Header: &EWFTableSectionHeader{
-				Entries: make([]uint32, 0),
-			},
+	ewf.Segment.Table = &EWFTableSection{
+		Header: &EWFTableSectionHeader{
+			Entries: make([]uint32, 0),
 		},
 	}
+
+	ewf.Segment.Digest = new(EWFDigestSection)
+
+	ewf.md5Hasher = md5.New()
+	ewf.sha1Hasher = sha1.New()
 
 	return ewf, nil
 }
@@ -134,7 +141,7 @@ func (ewf *EWFWriter) Close() error {
 	}
 	ewf.buf = ewf.buf[:0]
 
-	ewf.Segment.tableOffsets[0] = ewf.position
+	ewf.Segment.Table.Offset = ewf.position
 	err = ewf.encodeSectorsDescriptor()
 	if err != nil {
 		return err
@@ -145,7 +152,16 @@ func (ewf *EWFWriter) Close() error {
 		return err
 	}
 
-	err = ewf.Segment.Tables[0].Encode(ewf)
+	//table2 is basically a mirror of the table so the table encodes itself twice.
+	err = ewf.Segment.Table.Encode(ewf)
+	if err != nil {
+		return err
+	}
+
+	copy(ewf.Segment.Digest.MD5[:], ewf.md5Hasher.Sum(nil))
+	copy(ewf.Segment.Digest.SHA1[:], ewf.sha1Hasher.Sum(nil))
+
+	err = ewf.Segment.Digest.Encode(ewf)
 	if err != nil {
 		return err
 	}
@@ -155,32 +171,6 @@ func (ewf *EWFWriter) Close() error {
 	desc.Next = uint64(ewf.position)
 	_, _, err = WriteWithSum(ewf, desc)
 	return err
-}
-
-func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
-	cpos := ewf.position
-
-	//TODO:Documentation mention about Checksum for each chunk but its not working actually?
-	// sum := adler32.Checksum(p)
-	// p = binary.LittleEndian.AppendUint32(p, sum)
-
-	//TODO(ahmet): Should I reuse zlib writer?
-	var bufc []byte
-	bufc, err = compress(p)
-	if err != nil {
-		return
-	}
-
-	n, err = ewf.dest.WriteAt(bufc, ewf.position)
-	ewf.position += int64(n)
-	ewf.dataSize += int64(n)
-
-	ewf.TotalWritten += int64(n)
-
-	//TODO: does the tables need to be slice?
-	ewf.Segment.Tables[0].addEntry(uint32(cpos))
-	ewf.Segment.Volume.Data.IncrementChunkCount()
-	return
 }
 
 // Seek implements vfs.FileDescriptionImpl.Seek.
@@ -206,10 +196,46 @@ func (ewf *EWFWriter) Seek(offset int64, whence int) (ret int64, err error) {
 	return newPos, nil
 }
 
+func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
+	cpos := ewf.position
+
+	//TODO:Documentation mention about Checksum for each chunk but its not working actually?
+	// sum := adler32.Checksum(p)
+	// p = binary.LittleEndian.AppendUint32(p, sum)
+
+	//TODO(ahmet): Should I reuse zlib writer?
+	var bufc []byte
+	bufc, err = compress(p)
+	if err != nil {
+		return
+	}
+
+	n, err = ewf.dest.WriteAt(bufc, ewf.position)
+	ewf.position += int64(n)
+	ewf.dataSize += int64(n)
+	if err != nil {
+		return
+	}
+
+	ewf.TotalWritten += int64(n)
+
+	ewf.Segment.Table.addEntry(uint32(cpos))
+	ewf.Segment.Volume.Data.IncrementChunkCount()
+
+	_, err = ewf.md5Hasher.Write(p)
+	if err != nil {
+		return
+	}
+
+	_, err = ewf.sha1Hasher.Write(p)
+
+	return
+}
+
 func (ewf *EWFWriter) encodeSectorsDescriptor() error {
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_SECTORS)
 
-	desc.Next = uint64(ewf.Segment.tableOffsets[0])
+	desc.Next = uint64(ewf.Segment.Table.Offset)
 	desc.Size = uint64(ewf.dataSize)
 
 	currentPosition := ewf.position

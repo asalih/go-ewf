@@ -104,14 +104,19 @@ func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor
 	return nil
 }
 
-func (d *EWFTableSection) Encode(ewf *EWFWriter) error {
+func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
+	currentPosition, err := ewf.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE)
 
 	tableSz := d.Header.size()
 	desc.Size = uint64(tableSz)
-	desc.Next = uint64(ewf.position) + DescriptorSize + desc.Size
+	desc.Next = uint64(currentPosition) + DescriptorSize + desc.Size
 
-	_, _, err := WriteWithSum(ewf, desc)
+	_, _, err = WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
 	}
@@ -126,9 +131,13 @@ func (d *EWFTableSection) Encode(ewf *EWFWriter) error {
 		return err
 	}
 
+	currentPosition, err = ewf.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
 	desc = NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE2)
 	desc.Size = uint64(tableSz)
-	desc.Next = uint64(ewf.position) + DescriptorSize + desc.Size
+	desc.Next = uint64(currentPosition) + DescriptorSize + desc.Size
 
 	_, _, err = WriteWithSum(ewf, desc)
 	if err != nil {

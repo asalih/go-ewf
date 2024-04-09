@@ -124,10 +124,9 @@ func (v *EWFVolumeSection) Decode(fh io.ReadSeeker, section *EWFSectionDescripto
 }
 
 func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) error {
-
 	currentPosition, err := ewf.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	if vol.position <= 0 {

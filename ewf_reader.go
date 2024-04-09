@@ -59,16 +59,17 @@ func OpenEWF(fh io.ReadSeeker) (*EWFReader, error) {
 
 	ewf.ChunkSize = ewf.Segment.Volume.Data.GetSectorCount() * ewf.Segment.Volume.Data.GetSectorSize()
 
-	maxsize := int64(ewf.Segment.Volume.Data.GetChunkCount() * ewf.Segment.Volume.Data.GetSectorCount() * ewf.Segment.Volume.Data.GetSectorSize())
-	lastTable := ewf.Segment.Tables[len(ewf.Segment.Tables)-1]
+	maxSize := ewf.Segment.Volume.Data.GetChunkCount() *
+		ewf.Segment.Volume.Data.GetSectorCount() *
+		ewf.Segment.Volume.Data.GetSectorSize()
 
-	dat, err := lastTable.readChunk(int64(lastTable.Header.NumEntries) - 1)
+	dat, err := ewf.Segment.Table.readChunk(int64(ewf.Segment.Table.Header.NumEntries) - 1)
 	if err != nil {
 		return nil, err
 	}
 	lastChunkSize := int64(len(dat))
 
-	ewf.Size = maxsize - (int64(ewf.ChunkSize) - lastChunkSize)
+	ewf.Size = int64(maxSize) - (int64(ewf.ChunkSize) - lastChunkSize)
 
 	return ewf, nil
 }
