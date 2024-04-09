@@ -3,7 +3,6 @@ package ewf
 import (
 	"crypto/md5"
 	"crypto/sha1"
-	"encoding/binary"
 	"errors"
 	"hash"
 	"io"
@@ -22,9 +21,8 @@ type EWFWriter struct {
 	dest     io.WriterAt
 	position int64
 
-	sectorsPosition int64
-	dataSize        int64
-	buf             []byte
+	dataSize int64
+	buf      []byte
 
 	md5Hasher  hash.Hash
 	sha1Hasher hash.Hash
@@ -45,14 +43,14 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	}
 
 	ewf.Segment = NewEWFSegment()
-	ewf.Segment.ewfheader = &EWFHeader{
+	ewf.Segment.EWFHeader = &EWFHeader{
 		FieldsStart:   1,
 		SegmentNumber: 1, // TODO: this number increments for each file chunk like E0n
 		FieldsEnd:     0,
 	}
-	copy(ewf.Segment.ewfheader.Signature[:], []byte(evfSig))
+	copy(ewf.Segment.EWFHeader.Signature[:], []byte(evfSig))
 
-	err := ewf.Segment.ewfheader.Encode(ewf)
+	err := ewf.Segment.EWFHeader.Encode(ewf)
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +60,7 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	ewf.Segment.Header.NofCategories = "1"
 	ewf.Segment.Header.MediaInfo = make(map[string]string)
 
+	ewf.Segment.Sectors = new(EWFSectorsSection)
 	ewf.Segment.Volume = &EWFVolumeSection{
 		Data: DefaultVolume(),
 	}
@@ -73,6 +72,15 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	}
 
 	ewf.Segment.Digest = new(EWFDigestSection)
+	ewf.Segment.Hash = new(EWFHashSection)
+	ewf.Segment.Data = &EWFDataSection{
+		MediaType:      1,
+		MediaFlags:     1,
+		SectorPerChunk: ewf.Segment.Volume.Data.GetSectorCount(),
+		BytesPerSector: ewf.Segment.Volume.Data.GetSectorSize(),
+	}
+
+	ewf.Segment.Done = new(EWFDoneSection)
 
 	ewf.md5Hasher = md5.New()
 	ewf.sha1Hasher = sha1.New()
@@ -97,7 +105,7 @@ func (ewf *EWFWriter) Start() error {
 	}
 
 	// sectors descriptor also comes before the data
-	return ewf.encodeSectorsDescriptor()
+	return ewf.Segment.Sectors.Encode(ewf, 0, 0)
 }
 
 func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
@@ -142,7 +150,7 @@ func (ewf *EWFWriter) Close() error {
 	ewf.buf = ewf.buf[:0]
 
 	ewf.Segment.Table.Offset = ewf.position
-	err = ewf.encodeSectorsDescriptor()
+	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Table.Offset))
 	if err != nil {
 		return err
 	}
@@ -160,16 +168,26 @@ func (ewf *EWFWriter) Close() error {
 
 	copy(ewf.Segment.Digest.MD5[:], ewf.md5Hasher.Sum(nil))
 	copy(ewf.Segment.Digest.SHA1[:], ewf.sha1Hasher.Sum(nil))
-
 	err = ewf.Segment.Digest.Encode(ewf)
 	if err != nil {
 		return err
 	}
 
-	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_DONE)
-	desc.Size = uint64(binary.Size(desc))
-	desc.Next = uint64(ewf.position)
-	_, _, err = WriteWithSum(ewf, desc)
+	copy(ewf.Segment.Hash.MD5[:], ewf.md5Hasher.Sum(nil))
+	err = ewf.Segment.Hash.Encode(ewf)
+	if err != nil {
+		return err
+	}
+
+	ewf.Segment.Data.ChunkCount = ewf.Segment.Volume.Data.GetChunkCount()
+	ewf.Segment.Data.Sectors = uint64(ewf.Segment.Volume.Data.GetSectorCount() * ewf.Segment.Volume.Data.GetChunkCount())
+	err = ewf.Segment.Data.Encode(ewf)
+	if err != nil {
+		return err
+	}
+
+	err = ewf.Segment.Done.Encode(ewf)
+
 	return err
 }
 
@@ -228,30 +246,5 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 	}
 
 	_, err = ewf.sha1Hasher.Write(p)
-
 	return
-}
-
-func (ewf *EWFWriter) encodeSectorsDescriptor() error {
-	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_SECTORS)
-
-	desc.Next = uint64(ewf.Segment.Table.Offset)
-	desc.Size = uint64(ewf.dataSize)
-
-	currentPosition := ewf.position
-	if ewf.sectorsPosition <= 0 {
-		ewf.sectorsPosition = currentPosition
-	} else {
-		defer func() {
-			ewf.position = currentPosition
-		}()
-	}
-
-	ewf.position = ewf.sectorsPosition
-
-	_, _, err := WriteWithSum(ewf, desc)
-	if err != nil {
-		return err
-	}
-	return nil
 }

@@ -52,7 +52,7 @@ func (e *EWFVolumeSectionSpecData) GetChunkCount() uint32 {
 }
 func (e *EWFVolumeSectionSpecData) IncrementChunkCount() {
 	e.ChunkCount++
-	e.TotalSectorCount = e.ChunkCount * e.GetSectorCount()
+	e.TotalSectorCount = e.ChunkCount * e.SectorCount
 }
 
 type EWFVolumeSectionData struct {

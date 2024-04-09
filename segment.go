@@ -28,11 +28,15 @@ func (e *EWFHeader) Encode(ewf io.WriteSeeker) error {
 }
 
 type EWFSegment struct {
-	ewfheader *EWFHeader
+	EWFHeader *EWFHeader
 	Header    *EWFHeaderSection
 	Volume    *EWFVolumeSection
+	Sectors   *EWFSectorsSection
 	Table     *EWFTableSection
 	Digest    *EWFDigestSection
+	Hash      *EWFHashSection
+	Data      *EWFDataSection
+	Done      *EWFDoneSection
 
 	SectionDescriptors []*EWFSectionDescriptor
 
@@ -65,7 +69,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 	if sig != evfSig && sig != lvfSig {
 		return fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
 	}
-	seg.ewfheader = ewfHeader
+	seg.EWFHeader = ewfHeader
 
 	offset := int64(0)
 	sectorOffset := int64(0)
@@ -95,6 +99,14 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 			}
 			seg.Volume = v
 		}
+		if section.Type == EWF_SECTION_TYPE_SECTORS {
+			v := new(EWFSectorsSection)
+			err := v.Decode(fh, section, seg)
+			if err != nil {
+				return err
+			}
+			seg.Sectors = v
+		}
 
 		if section.Type == EWF_SECTION_TYPE_TABLE {
 			table := new(EWFTableSection)
@@ -121,6 +133,36 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 			}
 
 			seg.Digest = dig
+		}
+
+		if section.Type == EWF_SECTION_TYPE_HASH {
+			hashSec := new(EWFHashSection)
+			err := hashSec.Decode(fh, section, seg)
+			if err != nil {
+				return err
+			}
+
+			seg.Hash = hashSec
+		}
+
+		if section.Type == EWF_SECTION_TYPE_DATA {
+			dataSec := new(EWFDataSection)
+			err := dataSec.Decode(fh, section, seg)
+			if err != nil {
+				return err
+			}
+
+			seg.Data = dataSec
+		}
+
+		if section.Type == EWF_SECTION_TYPE_DONE {
+			doneSec := new(EWFDoneSection)
+			err := doneSec.Decode(fh, section, seg)
+			if err != nil {
+				return err
+			}
+
+			seg.Done = doneSec
 		}
 
 		if section.Next == uint64(offset) || section.Type == EWF_SECTION_TYPE_DONE {
