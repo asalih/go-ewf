@@ -42,7 +42,11 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 		TotalWritten:  0,
 	}
 
-	ewf.Segment = NewEWFSegment()
+	var err error
+	ewf.Segment, err = NewEWFSegment(nil)
+	if err != nil {
+		return nil, err
+	}
 	ewf.Segment.EWFHeader = &EWFHeader{
 		FieldsStart:   1,
 		SegmentNumber: 1, // TODO: this number increments for each file chunk like E0n
@@ -50,7 +54,7 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	}
 	copy(ewf.Segment.EWFHeader.Signature[:], []byte(evfSig))
 
-	err := ewf.Segment.EWFHeader.Encode(ewf)
+	err = ewf.Segment.EWFHeader.Encode(ewf)
 	if err != nil {
 		return nil, err
 	}
@@ -215,13 +219,11 @@ func (ewf *EWFWriter) Seek(offset int64, whence int) (ret int64, err error) {
 }
 
 func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return
+	}
+
 	cpos := ewf.position
-
-	//TODO:Documentation mention about Checksum for each chunk but its not working actually?
-	// sum := adler32.Checksum(p)
-	// p = binary.LittleEndian.AppendUint32(p, sum)
-
-	//TODO(ahmet): Should I reuse zlib writer?
 	var bufc []byte
 	bufc, err = compress(p)
 	if err != nil {

@@ -49,6 +49,8 @@ func (e *EWFTableSectionHeader) serialize() (buf []byte, err error) {
 	if err != nil {
 		return
 	}
+
+	e.Checksum = adler32.Checksum(bbuf.Bytes())
 	err = binary.Write(bbuf, binary.LittleEndian, e.Checksum)
 	if err != nil {
 		return
@@ -58,12 +60,13 @@ func (e *EWFTableSectionHeader) serialize() (buf []byte, err error) {
 		return
 	}
 
+	e.FooterChecksum = adler32.Checksum(bbuf.Bytes())
+	err = binary.Write(bbuf, binary.LittleEndian, e.FooterChecksum)
+	if err != nil {
+		return
+	}
+
 	buf = bbuf.Bytes()
-	sum := adler32.Checksum(buf)
-	e.FooterChecksum = sum
-
-	buf = binary.LittleEndian.AppendUint32(buf, sum)
-
 	return
 }
 
@@ -113,12 +116,16 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE)
 
 	tableSz := d.Header.size()
-	desc.Size = uint64(tableSz)
-	desc.Next = uint64(currentPosition) + DescriptorSize + desc.Size
+	desc.Size = uint64(tableSz) + DescriptorSize
+	desc.Next = uint64(currentPosition) + desc.Size
 
-	_, _, err = WriteWithSum(ewf, desc)
+	_, desc.Checksum, err = WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
+	}
+
+	d.Section = &EWFSectionDescriptor{
+		Descriptor: desc,
 	}
 
 	headerData, err := d.Header.serialize()
@@ -136,8 +143,8 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 		return err
 	}
 	desc = NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE2)
-	desc.Size = uint64(tableSz)
-	desc.Next = uint64(currentPosition) + DescriptorSize + desc.Size
+	desc.Size = uint64(tableSz) + DescriptorSize
+	desc.Next = uint64(currentPosition) + desc.Size
 
 	_, _, err = WriteWithSum(ewf, desc)
 	if err != nil {

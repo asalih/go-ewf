@@ -79,17 +79,22 @@ func (ewfHeader *EWFHeaderSection) Decode(fh io.ReadSeeker, section *EWFSectionD
 		return err
 	}
 
-	val, err := decompress(rd)
+	data, err := decompress(rd)
 	if err != nil {
 		return err
+	}
+
+	// Starts with a BOM
+	if data[0] == 255 || data[1] == 254 {
+		data = []byte(UTF16ToUTF8(data))
 	}
 
 	var identifiers []string
 	var values []string
 
-	for lineNum, line := range bytes.Split(val, newLineDelim) {
+	for lineNum, line := range bytes.Split(data, newLineDelim) {
 		for _, attr := range bytes.Split(line, fieldDelim) {
-			strAttr := string(attr)
+			strAttr := string(bytes.TrimSuffix(attr, []byte{'\r'}))
 			if lineNum == 0 {
 				ewfHeader.NofCategories = string(strAttr[0])
 			} else if lineNum == 1 {
@@ -141,8 +146,8 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 		return err
 	}
 
-	desc.Size = uint64(len(zlHeader))
-	desc.Next = desc.Size + DescriptorSize + uint64(currentPosition)
+	desc.Size = uint64(len(zlHeader)) + DescriptorSize
+	desc.Next = desc.Size + uint64(currentPosition)
 
 	// header section and its data appears twice subsequently
 	// after first write, we arrange the "Next" field then write
@@ -155,7 +160,7 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 		return err
 	}
 
-	desc.Next = desc.Next + DescriptorSize + desc.Size
+	desc.Next = desc.Next + desc.Size
 
 	_, _, err = WriteWithSum(ewf, desc)
 	if err != nil {

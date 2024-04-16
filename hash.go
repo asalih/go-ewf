@@ -7,7 +7,7 @@ import (
 
 type EWFHashSection struct {
 	MD5      [16]uint8
-	Unknown  uint8
+	Unknown  [16]uint8
 	Checksum uint32
 }
 
@@ -33,10 +33,8 @@ func (d *EWFHashSection) Encode(ewf io.WriteSeeker) error {
 
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_HASH)
 
-	dataSize := uint64(binary.Size(d))
-
-	desc.Size = dataSize
-	desc.Next = dataSize + DescriptorSize + uint64(currentPosition)
+	desc.Size = uint64(binary.Size(d)) + DescriptorSize
+	desc.Next = desc.Size + uint64(currentPosition)
 
 	_, desc.Checksum, err = WriteWithSum(ewf, desc)
 	if err != nil {

@@ -10,6 +10,8 @@ type EWFVolume interface {
 	GetSectorCount() uint32
 	GetChunkCount() uint32
 	IncrementChunkCount()
+	GetChecksum() uint32
+	SetChecksum(uint32)
 }
 
 type EWFVolumeSection struct {
@@ -30,26 +32,27 @@ type EWFVolumeSectionSpecData struct {
 	Checksum         uint32
 }
 
-func DefaultVolume() *EWFVolumeSectionSpecData {
-	return &EWFVolumeSectionSpecData{
-		Reserved:    1,
-		SectorCount: 64,
-		SectorSize:  512,
-		Reserved1:   [20]byte{},
-		Pad:         [45]byte{},
-		Signature:   [5]byte{},
+func DefaultVolume() *EWFVolumeSectionData {
+	return &EWFVolumeSectionData{
+		MediaType:        Fixed,
+		Reserved1:        [3]uint8{},
+		SectorCount:      64,
+		SectorSize:       512,
+		MediaFlags:       Image,
+		Unknown1:         [3]uint8{},
+		CompressionLevel: None,
+		Unknown3:         [3]uint8{},
+		UUID:             [16]uint8{},
+		Pad:              [963]uint8{},
+		Signature:        [5]byte{},
 	}
 }
 
-func (e *EWFVolumeSectionSpecData) GetSectorSize() uint32 {
-	return e.SectorSize
-}
-func (e *EWFVolumeSectionSpecData) GetSectorCount() uint32 {
-	return e.SectorCount
-}
-func (e *EWFVolumeSectionSpecData) GetChunkCount() uint32 {
-	return e.ChunkCount
-}
+func (e *EWFVolumeSectionSpecData) GetSectorSize() uint32  { return e.SectorSize }
+func (e *EWFVolumeSectionSpecData) GetSectorCount() uint32 { return e.SectorCount }
+func (e *EWFVolumeSectionSpecData) GetChunkCount() uint32  { return e.ChunkCount }
+func (e *EWFVolumeSectionSpecData) GetChecksum() uint32    { return e.Checksum }
+func (e *EWFVolumeSectionSpecData) SetChecksum(c uint32)   { e.Checksum = c }
 func (e *EWFVolumeSectionSpecData) IncrementChunkCount() {
 	e.ChunkCount++
 	e.TotalSectorCount = e.ChunkCount * e.SectorCount
@@ -80,15 +83,11 @@ type EWFVolumeSectionData struct {
 	Checksum         uint32
 }
 
-func (e *EWFVolumeSectionData) GetSectorSize() uint32 {
-	return e.SectorSize
-}
-func (e *EWFVolumeSectionData) GetSectorCount() uint32 {
-	return e.SectorCount
-}
-func (e *EWFVolumeSectionData) GetChunkCount() uint32 {
-	return e.ChunkCount
-}
+func (e *EWFVolumeSectionData) GetSectorSize() uint32  { return e.SectorSize }
+func (e *EWFVolumeSectionData) GetSectorCount() uint32 { return e.SectorCount }
+func (e *EWFVolumeSectionData) GetChunkCount() uint32  { return e.ChunkCount }
+func (e *EWFVolumeSectionData) GetChecksum() uint32    { return e.Checksum }
+func (e *EWFVolumeSectionData) SetChecksum(c uint32)   { e.Checksum = c }
 func (e *EWFVolumeSectionData) IncrementChunkCount() {
 	e.ChunkCount++
 	e.TotalSectorCount = uint64(e.ChunkCount) * uint64(e.GetSectorCount())
@@ -134,8 +133,8 @@ func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) error {
 
 		dataSize := uint64(binary.Size(vol.Data))
 
-		desc.Size = dataSize
-		desc.Next = dataSize + DescriptorSize + uint64(currentPosition)
+		desc.Size = dataSize + DescriptorSize
+		desc.Next = desc.Size + uint64(currentPosition)
 
 		var err error
 		_, desc.Checksum, err = WriteWithSum(ewf, desc)
@@ -153,10 +152,11 @@ func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) error {
 		return err
 	}
 
-	_, _, err = WriteWithSum(ewf, vol.Data)
+	_, sum, err := WriteWithSum(ewf, vol.Data)
 	if err != nil {
 		return err
 	}
+	vol.Data.SetChecksum(sum)
 
 	_, err = ewf.Seek(currentPosition, io.SeekStart)
 	return err

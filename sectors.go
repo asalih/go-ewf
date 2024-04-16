@@ -21,7 +21,7 @@ func (d *EWFSectorsSection) Encode(ewf io.WriteSeeker, dataSize, next uint64) (e
 
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_SECTORS)
 
-	desc.Size = dataSize
+	desc.Size = dataSize + DescriptorSize
 	desc.Next = next
 
 	if d.position <= 0 {

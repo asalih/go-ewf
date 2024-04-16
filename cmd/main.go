@@ -75,7 +75,10 @@ func main() {
 
 	// e01Files, err := filepath.Glob("./testdata/esifirbir.E01")
 	// e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
+	// e01Files, err := filepath.Glob("./testdata/The Janitor Copy.E01")
 	e01Files, err := filepath.Glob("./testdata/testimage.E01")
+	// e01Files, err := filepath.Glob("./testdata/multiseg/rand.dd.*")
+	// e01Files, err := filepath.Glob("./testdata/test.ntfs.dd.E01")
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -83,15 +86,21 @@ func main() {
 		log.Fatal("e01 file not found")
 	}
 
-	f, err := os.Open(e01Files[0])
+	fhs := make([]io.ReadSeeker, 0)
+	for _, f := range e01Files {
+		file, err := os.Open(f)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+		fhs = append(fhs, file)
+	}
+
+	ewfImg, err := ewf.OpenEWF(fhs...)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	ewfImg, err := ewf.OpenEWF(f)
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
+	fmt.Println("Size: ", ewfImg.Size)
 
 	ntfs_ctx, err := parser.GetNTFSContext(ewfImg, 0)
 	if err != nil {

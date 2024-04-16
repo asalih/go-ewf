@@ -40,51 +40,61 @@ type EWFSegment struct {
 
 	SectionDescriptors []*EWFSectionDescriptor
 
-	chunkCount   int
-	sectorCount  int
-	sectorOffset int
-	size         int
-	offset       int64
+	fh            io.ReadSeeker
+	chunkCount    int
+	sectorCount   int
+	sectorOffset  int
+	size          int
+	segmentOffset int
 }
 
-func NewEWFSegment() *EWFSegment {
-	return &EWFSegment{
+func NewEWFSegment(fh io.ReadSeeker) (*EWFSegment, error) {
+	seg := &EWFSegment{
 		SectionDescriptors: make([]*EWFSectionDescriptor, 0),
 
+		fh:           fh,
 		chunkCount:   0,
 		sectorCount:  0,
 		sectorOffset: 0,
 		size:         0,
-		offset:       0,
 	}
+
+	if fh != nil {
+		ewfHeader := new(EWFHeader)
+		err := ewfHeader.Decode(fh)
+		if err != nil {
+			return nil, err
+		}
+		sig := string(ewfHeader.Signature[:])
+		if sig != evfSig && sig != lvfSig {
+			return nil, fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
+		}
+		seg.EWFHeader = ewfHeader
+	}
+
+	return seg, nil
 }
 
-func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
-	ewfHeader := new(EWFHeader)
-	err := ewfHeader.Decode(fh)
-	if err != nil {
-		return err
-	}
-	sig := string(ewfHeader.Signature[:])
-	if sig != evfSig && sig != lvfSig {
-		return fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
-	}
-	seg.EWFHeader = ewfHeader
+func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 
 	offset := int64(0)
 	sectorOffset := int64(0)
 
+	if vol != nil {
+		seg.Volume = vol
+	}
+
 	for {
-		section, err := NewEWFSectionDescriptor(fh)
+		section, err := NewEWFSectionDescriptor(seg.fh)
 		if err != nil {
 			return err
 		}
-		fmt.Println(section.Type)
+		fmt.Println("Name: ", section.Type, "Size: ", section.Size)
 		seg.SectionDescriptors = append(seg.SectionDescriptors, section)
 
-		if section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2 && seg.Header == nil {
+		if (section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2) && seg.Header == nil {
 			h := new(EWFHeaderSection)
-			err := h.Decode(fh, section, seg)
+			err := h.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -93,7 +103,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_DISK || section.Type == EWF_SECTION_TYPE_VOLUME && seg.Volume == nil {
 			v := new(EWFVolumeSection)
-			err := v.Decode(fh, section, seg)
+			err := v.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -101,7 +111,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 		}
 		if section.Type == EWF_SECTION_TYPE_SECTORS {
 			v := new(EWFSectorsSection)
-			err := v.Decode(fh, section, seg)
+			err := v.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -110,7 +120,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_TABLE {
 			table := new(EWFTableSection)
-			err := table.Decode(fh, section, seg)
+			err := table.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -127,7 +137,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_DIGEST {
 			dig := new(EWFDigestSection)
-			err := dig.Decode(fh, section, seg)
+			err := dig.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -137,7 +147,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_HASH {
 			hashSec := new(EWFHashSection)
-			err := hashSec.Decode(fh, section, seg)
+			err := hashSec.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -147,7 +157,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_DATA {
 			dataSec := new(EWFDataSection)
-			err := dataSec.Decode(fh, section, seg)
+			err := dataSec.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -157,7 +167,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 
 		if section.Type == EWF_SECTION_TYPE_DONE {
 			doneSec := new(EWFDoneSection)
-			err := doneSec.Decode(fh, section, seg)
+			err := doneSec.Decode(seg.fh, section, seg)
 			if err != nil {
 				return err
 			}
@@ -170,7 +180,7 @@ func (seg *EWFSegment) Decode(fh io.ReadSeeker) error {
 		}
 
 		offset = int64(section.Next)
-		fh.Seek(offset, io.SeekStart)
+		seg.fh.Seek(offset, io.SeekStart)
 	}
 
 	seg.chunkCount += int(seg.Table.Header.NumEntries)

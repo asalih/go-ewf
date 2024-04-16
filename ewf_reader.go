@@ -3,6 +3,7 @@ package ewf
 import (
 	"fmt"
 	"io"
+	"sort"
 )
 
 type MediaType uint8
@@ -33,37 +34,65 @@ const (
 )
 
 type EWFReader struct {
-	Segment       *EWFSegment
+	Segments      []*EWFSegment
+	First         *EWFSegment
 	SegmentOffset uint32
 	ChunkSize     uint32
 	Size          int64
+
+	position int64
 }
 
-func OpenEWF(fh io.ReadSeeker) (*EWFReader, error) {
+func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf := &EWFReader{
+		Segments:      make([]*EWFSegment, 0),
 		SegmentOffset: 0,
 		ChunkSize:     0,
 		Size:          0,
 	}
 
-	segment := NewEWFSegment()
-	err := segment.Decode(fh)
-	if err != nil {
-		return nil, err
+	for _, file := range fhs {
+		segment, err := NewEWFSegment(file)
+		if err != nil {
+			return nil, err
+		}
+
+		ewf.Segments = append(ewf.Segments, segment)
 	}
-	if segment.Header == nil || segment.Volume == nil {
+
+	sort.SliceStable(ewf.Segments, func(i, j int) bool {
+		return ewf.Segments[i].EWFHeader.SegmentNumber < ewf.Segments[j].EWFHeader.SegmentNumber
+	})
+
+	if len(ewf.Segments) == 0 {
 		return nil, fmt.Errorf("failed to load EWF")
 	}
 
-	ewf.Segment = segment
+	ewf.First = ewf.Segments[0]
 
-	ewf.ChunkSize = ewf.Segment.Volume.Data.GetSectorCount() * ewf.Segment.Volume.Data.GetSectorSize()
+	segmentOffset := 0
+	for _, segment := range ewf.Segments {
+		// the table in the segment requires volume for calculations so needed to pass it from the first segment
+		err := segment.Decode(ewf.First.Volume)
+		if err != nil {
+			return nil, err
+		}
+		segmentOffset += segment.sectorCount
+		segment.segmentOffset = segmentOffset
+	}
 
-	maxSize := ewf.Segment.Volume.Data.GetChunkCount() *
-		ewf.Segment.Volume.Data.GetSectorCount() *
-		ewf.Segment.Volume.Data.GetSectorSize()
+	if ewf.First.Header == nil || ewf.First.Volume == nil {
+		return nil, fmt.Errorf("failed to load EWF")
+	}
 
-	dat, err := ewf.Segment.Table.readChunk(int64(ewf.Segment.Table.Header.NumEntries) - 1)
+	ewf.ChunkSize = ewf.First.Volume.Data.GetSectorCount() * ewf.First.Volume.Data.GetSectorSize()
+
+	maxSize := ewf.First.Volume.Data.GetChunkCount() *
+		ewf.First.Volume.Data.GetSectorCount() *
+		ewf.First.Volume.Data.GetSectorSize()
+
+	lastTable := ewf.Segments[len(ewf.Segments)-1].Table
+	dat, err := lastTable.readChunk(int64(lastTable.Header.NumEntries) - 1)
 	if err != nil {
 		return nil, err
 	}
@@ -74,17 +103,23 @@ func OpenEWF(fh io.ReadSeeker) (*EWFReader, error) {
 	return ewf, nil
 }
 
+func (ewf *EWFReader) Read(p []byte) (n int, err error) {
+	n, err = ewf.ReadAt(p, ewf.position)
+	ewf.position += int64(n)
+	return
+}
+
 func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
-	sectorOffset := off / int64(ewf.Segment.Volume.Data.GetSectorSize())
+	sectorOffset := off / int64(ewf.First.Volume.Data.GetSectorSize())
 	length := len(p)
-	sectorCount := (length + int(ewf.Segment.Volume.Data.GetSectorSize()) - 1) / int(ewf.Segment.Volume.Data.GetSectorSize())
+	sectorCount := (length + int(ewf.First.Volume.Data.GetSectorSize()) - 1) / int(ewf.First.Volume.Data.GetSectorSize())
 
 	buf, err := ewf.readSectors(uint32(sectorOffset), uint32(sectorCount))
 	if err != nil {
 		return 0, err
 	}
 
-	bufOff := off % int64(ewf.Segment.Volume.Data.GetSectorSize())
+	bufOff := off % int64(ewf.First.Volume.Data.GetSectorSize())
 	n = copy(p, buf[bufOff:bufOff+int64(length)])
 	return
 }
@@ -92,11 +127,20 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
 	buf := make([]byte, 0)
 
+	segmentIdx := sort.Search(len(ewf.Segments), func(i int) bool {
+		return uint32(ewf.Segments[i].segmentOffset) > sector
+	})
+	if segmentIdx >= len(ewf.Segments) {
+		return buf, io.EOF
+	}
+
 	for count > 0 {
-		segmentRemainingSectors := uint32(ewf.Segment.sectorCount) - (sector - uint32(ewf.Segment.sectorOffset))
+		segment := ewf.Segments[segmentIdx]
+
+		segmentRemainingSectors := uint32(segment.sectorCount) - (sector - uint32(segment.sectorOffset))
 		segmentSectors := min(segmentRemainingSectors, count)
 
-		dat, err := ewf.Segment.ReadSectors(int64(sector), int(segmentSectors))
+		dat, err := segment.ReadSectors(int64(sector), int(segmentSectors))
 		if err != nil {
 			return nil, err
 		}

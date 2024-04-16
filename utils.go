@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"hash/adler32"
 	"io"
+	"unicode/utf16"
 )
 
 const adler32SumSize = 4
@@ -33,6 +34,13 @@ func WriteWithSum(dest io.Writer, obj interface{}) (n int, sum uint32, err error
 	n += adler32SumSize
 
 	return
+}
+
+func UTF16ToUTF8(in []byte) string {
+	buff := bytes.NewReader(in)
+	u16 := make([]uint16, len(in)/2)
+	binary.Read(buff, binary.LittleEndian, &u16)
+	return string(utf16.Decode(u16))
 }
 
 /*CMF|FLG  0x78|  (FLG|CM)
@@ -66,7 +74,8 @@ func decompress(val []byte) ([]byte, error) {
 
 func compress(val []byte) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	wr, err := zlib.NewWriterLevel(buf, 1)
+
+	wr, err := zlib.NewWriterLevel(buf, zlib.BestSpeed)
 	if err != nil {
 		return nil, err
 	}

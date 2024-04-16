@@ -56,7 +56,7 @@ func NewEWFSectionDescriptor(fh io.ReadSeeker) (*EWFSectionDescriptor, error) {
 		Descriptor: &descriptor,
 		Type:       string(bytes.TrimRight(descriptor.Type[:], "\x00")),
 		Next:       descriptor.Next,
-		Size:       uint64(descriptor.Size),
+		Size:       uint64(descriptor.Size - DescriptorSize),
 		Checksum:   descriptor.Checksum,
 		DataOffset: dataOffset,
 	}, nil
