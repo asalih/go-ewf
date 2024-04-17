@@ -199,7 +199,10 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
 	tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
 
-	data := table.readSectors(uint64(segmentSector), uint64(tableSectors))
+	data, err := table.readSectors(uint64(segmentSector), uint64(tableSectors))
+	if err != nil {
+		return buf, err
+	}
 
 	buf = append(buf, data...)
 

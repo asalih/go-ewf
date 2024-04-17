@@ -110,9 +110,10 @@ func (ewf *EWFReader) Read(p []byte) (n int, err error) {
 }
 
 func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
-	sectorOffset := off / int64(ewf.First.Volume.Data.GetSectorSize())
+	sectorSize := int(ewf.First.Volume.Data.GetSectorSize())
+	sectorOffset := off / int64(sectorSize)
 	length := len(p)
-	sectorCount := (length + int(ewf.First.Volume.Data.GetSectorSize()) - 1) / int(ewf.First.Volume.Data.GetSectorSize())
+	sectorCount := (length + sectorSize - 1) / sectorSize
 
 	buf, err := ewf.readSectors(uint32(sectorOffset), uint32(sectorCount))
 	if err != nil {

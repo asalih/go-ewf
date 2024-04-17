@@ -2,7 +2,6 @@ package ewf
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"hash/adler32"
@@ -211,7 +210,6 @@ func (t *EWFTableSection) addEntry(offset uint32) {
 }
 
 func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
-	// log.Printf("EWFTableSection::read_chunk(0x%x)", chunk)
 
 	if chunk < 0 || chunk >= int64(len(t.Header.Entries)) {
 		return nil, errors.New("invalid chunk index")
@@ -221,21 +219,14 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 	chunkOffset := uint32(t.BaseOffset) + (chunkEntry & 0x7FFFFFFF)
 	compressed := chunkEntry>>31 == 1
 
-	// EWF sucks
-	// We don't know the chunk size, so try to determine it using the offset of the next chunk
-	// When it's the last chunk in the table though, this becomes trickier.
-	// We have to check if the chunk data is preceding the table, or if it's contained within the table section
-	// Then we can calculate the chunk size using these offsets
 	var chunkSize int64
 	if chunk+1 == int64(t.Header.NumEntries) {
 		// The chunk data is stored before the table section
-		if chunkOffset < uint32(t.Section.offset) {
-			chunkSize = t.Section.offset - int64(chunkOffset)
-		} else if int64(chunkOffset) < t.Section.offset+int64(t.Section.Size) {
-			chunkSize = t.Section.offset + int64(t.Section.Size) - int64(chunkOffset)
-		} else {
+		chunkSize = t.calculateLastChunkSize(chunkOffset)
+		if chunkSize == -1 {
 			return nil, errors.New("unknown size of last chunk")
 		}
+
 	} else {
 		chunkSize = t.BaseOffset + int64(t.Header.Entries[chunk+1]&0x7FFFFFFF) - int64(chunkOffset)
 	}
@@ -255,27 +246,40 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 	}
 
 	if compressed {
-		reader, err := zlib.NewReader(bytes.NewReader(buf))
-		if err != nil {
-			return nil, err
-		}
-		defer reader.Close()
-
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			return nil, err
-		}
-		return data, nil
+		return decompress(buf)
 	}
 
 	return buf, nil
 }
 
-func (ets *EWFTableSection) readSectors(sector uint64, count uint64) []byte {
-	allBuf := make([]byte, 0)
+// Helper function to calculate the size of the last chunk
+func (t *EWFTableSection) calculateLastChunkSize(chunkOffset uint32) int64 {
+	// EWF sucks
+	// We don't know the chunk size, so try to determine it using the offset of the next chunk
+	// When it's the last chunk in the table though, this becomes trickier.
+	// We have to check if the chunk data is preceding the table, or if it's contained within the table section
+	// Then we can calculate the chunk size using these offsets
 
-	chunkSectorCount := ets.Segment.Volume.Data.GetSectorCount()
+	if chunkOffset < uint32(t.Section.offset) {
+		return t.Section.offset - int64(chunkOffset)
+	}
+
+	if int64(chunkOffset) < t.Section.offset+int64(t.Section.Size) {
+		return t.Section.offset + int64(t.Section.Size) - int64(chunkOffset)
+	}
+
+	return -1
+}
+
+func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, error) {
+	if count == 0 {
+		return nil, nil // Early return if there are no sectors to read
+	}
+
 	sectorSize := ets.Segment.Volume.Data.GetSectorSize()
+	chunkSectorCount := ets.Segment.Volume.Data.GetSectorCount()
+
+	allBuf := make([]byte, 0, count*uint64(sectorSize))
 
 	tableSector := sector - uint64(ets.SectorOffset)
 	tableChunk := tableSector / uint64(chunkSectorCount)
@@ -290,8 +294,7 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) []byte {
 
 		buf, err := ets.readChunk(int64(tableChunk))
 		if err != nil {
-			//TODO: return err
-			continue
+			return buf, err
 		}
 		if chunkPos != 0 || tableSectors != uint64(chunkSectorCount) {
 			buf = buf[chunkPos:chunkEnd]
@@ -303,5 +306,5 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) []byte {
 		tableChunk += 1
 	}
 
-	return allBuf
+	return allBuf, nil
 }
