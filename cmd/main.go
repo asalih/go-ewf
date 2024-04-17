@@ -27,7 +27,7 @@ func main() {
 
 	// this source has boot part, i need to skip where ntfs starts
 	offset := 65536
-	fmt.Println("Size: ", st.Size(), st.Size()-int64(offset))
+	// fmt.Println("Size: ", st.Size(), st.Size()-int64(offset))
 	vhdNtfsRdr := io.NewSectionReader(e01Source, int64(offset), st.Size()-int64(offset))
 	_ = vhdNtfsRdr
 

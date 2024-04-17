@@ -89,7 +89,6 @@ func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("Name: ", section.Type, "Size: ", section.Size)
 		seg.SectionDescriptors = append(seg.SectionDescriptors, section)
 
 		if (section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2) && seg.Header == nil {
