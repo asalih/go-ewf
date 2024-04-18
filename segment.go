@@ -40,23 +40,16 @@ type EWFSegment struct {
 
 	SectionDescriptors []*EWFSectionDescriptor
 
-	fh            io.ReadSeeker
-	chunkCount    int
-	sectorCount   int
-	sectorOffset  int
-	size          int
-	segmentOffset int
+	fh           io.ReadSeeker
+	chunkCount   int
+	sectorCount  int
+	sectorOffset int
 }
 
 func NewEWFSegment(fh io.ReadSeeker) (*EWFSegment, error) {
 	seg := &EWFSegment{
 		SectionDescriptors: make([]*EWFSectionDescriptor, 0),
-
-		fh:           fh,
-		chunkCount:   0,
-		sectorCount:  0,
-		sectorOffset: 0,
-		size:         0,
+		fh:                 fh,
 	}
 
 	if fh != nil {
@@ -185,7 +178,6 @@ func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 	seg.chunkCount += int(seg.Table.Header.NumEntries)
 
 	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
-	seg.size = seg.chunkCount * int(seg.Volume.Data.GetSectorCount()) * int(seg.Volume.Data.GetSectorSize())
 
 	return nil
 }

@@ -34,21 +34,21 @@ const (
 )
 
 type EWFReader struct {
-	Segments      []*EWFSegment
-	First         *EWFSegment
-	SegmentOffset uint32
-	ChunkSize     uint32
-	Size          int64
+	Segments       []*EWFSegment
+	First          *EWFSegment
+	SegmentOffsets []uint32
+	ChunkSize      uint32
+	Size           int64
 
 	position int64
 }
 
 func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf := &EWFReader{
-		Segments:      make([]*EWFSegment, 0),
-		SegmentOffset: 0,
-		ChunkSize:     0,
-		Size:          0,
+		Segments:       make([]*EWFSegment, 0),
+		SegmentOffsets: make([]uint32, 0),
+		ChunkSize:      0,
+		Size:           0,
 	}
 
 	for _, file := range fhs {
@@ -70,15 +70,20 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 
 	ewf.First = ewf.Segments[0]
 
-	segmentOffset := 0
+	var segmentOffset uint32
 	for _, segment := range ewf.Segments {
 		// the table in the segment requires volume for calculations so needed to pass it from the first segment
 		err := segment.Decode(ewf.First.Volume)
 		if err != nil {
 			return nil, err
 		}
-		segmentOffset += segment.sectorCount
-		segment.segmentOffset = segmentOffset
+
+		if segmentOffset != 0 {
+			ewf.SegmentOffsets = append(ewf.SegmentOffsets, segmentOffset)
+		}
+		// segment.offset = int64(segmentOffset * ewf.First.Volume.Data.GetSectorSize())
+		segment.sectorOffset = int(segmentOffset)
+		segmentOffset += uint32(segment.sectorCount)
 	}
 
 	if ewf.First.Header == nil || ewf.First.Volume == nil {
@@ -128,18 +133,21 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
 	buf := make([]byte, 0)
 
-	segmentIdx := sort.Search(len(ewf.Segments), func(i int) bool {
-		return uint32(ewf.Segments[i].segmentOffset) > sector
+	segmentIdx := sort.Search(len(ewf.SegmentOffsets), func(i int) bool {
+		return ewf.SegmentOffsets[i] > sector
 	})
-	if segmentIdx >= len(ewf.Segments) {
-		return buf, io.EOF
-	}
 
 	for count > 0 {
+		if segmentIdx >= len(ewf.Segments) {
+			return buf, io.EOF
+		}
 		segment := ewf.Segments[segmentIdx]
 
 		segmentRemainingSectors := uint32(segment.sectorCount) - (sector - uint32(segment.sectorOffset))
 		segmentSectors := min(segmentRemainingSectors, count)
+		if segmentSectors <= 0 {
+			return buf, io.EOF
+		}
 
 		dat, err := segment.ReadSectors(int64(sector), int(segmentSectors))
 		if err != nil {
@@ -148,6 +156,7 @@ func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
 		buf = append(buf, dat...)
 		sector += segmentSectors
 		count -= segmentSectors
+		segmentIdx++
 	}
 
 	return buf, nil
