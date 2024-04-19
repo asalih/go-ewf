@@ -1,6 +1,7 @@
 package ewf
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -129,6 +130,29 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 	bufOff := off % int64(ewf.First.Volume.Data.GetSectorSize())
 	n = copy(p, buf[bufOff:bufOff+int64(length)])
 	return
+}
+
+// Seek implements vfs.FileDescriptionImpl.Seek.
+func (ewf *EWFReader) Seek(offset int64, whence int) (ret int64, err error) {
+	var newPos int64
+
+	switch whence {
+	case io.SeekStart:
+		newPos = offset
+	case io.SeekCurrent:
+		newPos = ewf.position + offset
+	case io.SeekEnd:
+		newPos = ewf.Size + offset
+	default:
+		return 0, errors.New("invalid whence value")
+	}
+
+	if newPos < 0 {
+		return 0, errors.New("negative position")
+	}
+
+	ewf.position = newPos
+	return newPos, nil
 }
 
 func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
