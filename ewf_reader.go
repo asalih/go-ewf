@@ -96,7 +96,8 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 		ewf.First.Volume.Data.GetSectorCount() *
 		ewf.First.Volume.Data.GetSectorSize()
 
-	lastTable := ewf.Segments[len(ewf.Segments)-1].Table
+	lastTable := ewf.Segments[len(ewf.Segments)-1].Tables[len(ewf.Segments[len(ewf.Segments)-1].Tables)-1]
+
 	dat, err := lastTable.readChunk(int64(lastTable.Header.NumEntries) - 1)
 	if err != nil {
 		return nil, err

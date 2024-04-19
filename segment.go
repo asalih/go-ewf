@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 )
 
 const (
@@ -32,7 +33,7 @@ type EWFSegment struct {
 	Header    *EWFHeaderSection
 	Volume    *EWFVolumeSection
 	Sectors   *EWFSectorsSection
-	Table     *EWFTableSection
+	Tables    []*EWFTableSection
 	Digest    *EWFDigestSection
 	Hash      *EWFHashSection
 	Data      *EWFDataSection
@@ -44,11 +45,13 @@ type EWFSegment struct {
 	chunkCount   int
 	sectorCount  int
 	sectorOffset int
+	tableOffsets []int64
 }
 
 func NewEWFSegment(fh io.ReadSeeker) (*EWFSegment, error) {
 	seg := &EWFSegment{
 		SectionDescriptors: make([]*EWFSectionDescriptor, 0),
+		tableOffsets:       make([]int64, 0),
 		fh:                 fh,
 	}
 
@@ -118,13 +121,13 @@ func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 			}
 
 			if sectorOffset != 0 {
-				seg.Table.Offset = sectorOffset
+				seg.tableOffsets = append(seg.tableOffsets, sectorOffset)
 			}
 
 			table.SectorOffset = sectorOffset
 			sectorOffset += table.SectorCount
 
-			seg.Table = table
+			seg.Tables = append(seg.Tables, table)
 		}
 
 		if section.Type == EWF_SECTION_TYPE_DIGEST {
@@ -175,7 +178,9 @@ func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 		seg.fh.Seek(offset, io.SeekStart)
 	}
 
-	seg.chunkCount += int(seg.Table.Header.NumEntries)
+	for _, t := range seg.Tables {
+		seg.chunkCount += int(t.Header.NumEntries)
+	}
 
 	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
 
@@ -186,20 +191,27 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	segmentSector := sector - int64(seg.sectorOffset)
 	buf := make([]byte, 0)
 
-	table := seg.Table
+	tableIdx := sort.Search(len(seg.tableOffsets), func(i int) bool { return seg.tableOffsets[i] > segmentSector })
+	for count > 0 {
+		table := seg.Tables[tableIdx]
 
-	tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
-	tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
+		tableRemainingSectors := table.SectorCount - (segmentSector - table.SectorOffset)
+		tableSectors := int64(math.Min(float64(tableRemainingSectors), float64(count)))
 
-	data, err := table.readSectors(uint64(segmentSector), uint64(tableSectors))
-	if err != nil {
-		return buf, err
+		data, err := table.readSectors(uint64(segmentSector), uint64(tableSectors))
+		if err != nil {
+			return buf, err
+		}
+
+		buf = append(buf, data...)
+
+		segmentSector += tableSectors
+		count -= int(tableSectors)
+		tableIdx++
+		if tableIdx >= len(seg.Tables) {
+			break
+		}
 	}
-
-	buf = append(buf, data...)
-
-	segmentSector += tableSectors
-	count -= int(tableSectors)
 
 	return buf, nil
 }

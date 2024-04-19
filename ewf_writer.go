@@ -69,9 +69,11 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 		Data: DefaultVolume(),
 	}
 
-	ewf.Segment.Table = &EWFTableSection{
-		Header: &EWFTableSectionHeader{
-			Entries: make([]uint32, 0),
+	ewf.Segment.Tables = []*EWFTableSection{
+		{
+			Header: &EWFTableSectionHeader{
+				Entries: make([]uint32, 0),
+			},
 		},
 	}
 
@@ -153,8 +155,8 @@ func (ewf *EWFWriter) Close() error {
 	}
 	ewf.buf = ewf.buf[:0]
 
-	ewf.Segment.Table.Offset = ewf.position
-	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Table.Offset))
+	ewf.Segment.Tables[0].Offset = ewf.position
+	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Tables[0].Offset))
 	if err != nil {
 		return err
 	}
@@ -165,7 +167,7 @@ func (ewf *EWFWriter) Close() error {
 	}
 
 	//table2 is basically a mirror of the table so the table encodes itself twice.
-	err = ewf.Segment.Table.Encode(ewf)
+	err = ewf.Segment.Tables[0].Encode(ewf)
 	if err != nil {
 		return err
 	}
@@ -239,7 +241,7 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 
 	ewf.TotalWritten += int64(n)
 
-	ewf.Segment.Table.addEntry(uint32(cpos))
+	ewf.Segment.Tables[0].addEntry(uint32(cpos))
 	ewf.Segment.Volume.Data.IncrementChunkCount()
 
 	_, err = ewf.md5Hasher.Write(p)
