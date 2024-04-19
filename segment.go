@@ -8,11 +8,6 @@ import (
 	"sort"
 )
 
-const (
-	evfSig = "EVF\x09\x0d\x0a\xff\x00"
-	lvfSig = "LVF\x09\x0d\x0a\xff\x00"
-)
-
 type EWFHeader struct {
 	Signature     [8]byte
 	FieldsStart   uint8

@@ -1,6 +1,16 @@
 package ewf
 
 const (
+	evfSig = "EVF\x09\x0d\x0a\xff\x00"
+	lvfSig = "LVF\x09\x0d\x0a\xff\x00"
+)
+
+var (
+	newLineDelim = []byte{'\n'}
+	fieldDelim   = []byte{'\t'}
+)
+
+const (
 	DefaultChunkSize = 32768
 	ChecksumSize     = 4
 )

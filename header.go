@@ -29,11 +29,6 @@ const (
 	EWF_HEADER_VALUES_INDEX_DEVICE_LABEL             EWFMediaInfo = "l"
 )
 
-var (
-	newLineDelim = []byte{'\n'}
-	fieldDelim   = []byte{'\t'}
-)
-
 const (
 	EWF_HEADER_VALUES_INDEX_COMPRESSION_BEST    = "b"
 	EWF_HEADER_VALUES_INDEX_COMPRESSION_FASTEST = "f"
