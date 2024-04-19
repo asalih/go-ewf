@@ -1,8 +1,8 @@
 package ewf
 
 const (
-	evfSig = "EVF\x09\x0d\x0a\xff\x00"
-	lvfSig = "LVF\x09\x0d\x0a\xff\x00"
+	EVFSignature = "EVF\x09\x0d\x0a\xff\x00"
+	LVFSignature = "LVF\x09\x0d\x0a\xff\x00"
 )
 
 var (

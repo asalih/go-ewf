@@ -57,7 +57,7 @@ func NewEWFSegment(fh io.ReadSeeker) (*EWFSegment, error) {
 			return nil, err
 		}
 		sig := string(ewfHeader.Signature[:])
-		if sig != evfSig && sig != lvfSig {
+		if sig != EVFSignature && sig != LVFSignature {
 			return nil, fmt.Errorf("invalid signature, got %v", ewfHeader.Signature)
 		}
 		seg.EWFHeader = ewfHeader

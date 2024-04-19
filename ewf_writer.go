@@ -52,7 +52,7 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 		SegmentNumber: 1, // TODO: this number increments for each file chunk like E0n
 		FieldsEnd:     0,
 	}
-	copy(ewf.Segment.EWFHeader.Signature[:], []byte(evfSig))
+	copy(ewf.Segment.EWFHeader.Signature[:], []byte(EVFSignature))
 
 	err = ewf.Segment.EWFHeader.Encode(ewf)
 	if err != nil {
