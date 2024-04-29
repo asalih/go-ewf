@@ -120,7 +120,9 @@ func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
 
 	n, err = ewf.dest.WriteAt(p, ewf.position)
 	ewf.position += int64(n)
-	ewf.TotalWritten += int64(n)
+	if ewf.position >= ewf.TotalWritten {
+		ewf.TotalWritten += int64(n)
+	}
 	return
 }
 
@@ -142,21 +144,25 @@ func (ewf *EWFWriter) WriteData(p []byte) (n int, err error) {
 		}
 
 		ewf.buf = ewf.buf[DefaultChunkSize:]
-
 	}
 
 	return
 }
 
 func (ewf *EWFWriter) Close() error {
-	_, err := ewf.writeData(ewf.buf)
-	if err != nil {
-		return err
+	if len(ewf.buf) > 0 {
+		ewf.mu.Lock()
+		_, err := ewf.writeData(ewf.buf)
+		if err != nil {
+			ewf.mu.Unlock()
+			return err
+		}
+		ewf.buf = ewf.buf[:0]
+		ewf.mu.Unlock()
 	}
-	ewf.buf = ewf.buf[:0]
 
 	ewf.Segment.Tables[0].Offset = ewf.position
-	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Tables[0].Offset))
+	err := ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Tables[0].Offset))
 	if err != nil {
 		return err
 	}
@@ -207,7 +213,7 @@ func (ewf *EWFWriter) Seek(offset int64, whence int) (ret int64, err error) {
 	case io.SeekCurrent:
 		newPos = ewf.position + offset
 	case io.SeekEnd:
-		newPos = ewf.TotalWritten + offset
+		newPos = ewf.dataSize + offset
 	default:
 		return 0, errors.New("invalid whence value")
 	}

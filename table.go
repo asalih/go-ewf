@@ -10,13 +10,13 @@ import (
 )
 
 type EWFTableSectionHeader struct {
-	NumEntries     uint32
-	Pad            uint32
-	BaseOffset     uint64
-	Pad2           uint32
-	Checksum       uint32
+	NumEntries     uint32 // header
+	Pad            uint32 // header
+	BaseOffset     uint64 // header
+	Pad2           uint32 // header
+	Checksum       uint32 // header
 	Entries        []uint32
-	FooterChecksum uint32
+	FooterChecksum uint32 // footer
 }
 
 func (e *EWFTableSectionHeader) size() int {
@@ -54,12 +54,15 @@ func (e *EWFTableSectionHeader) serialize() (buf []byte, err error) {
 	if err != nil {
 		return
 	}
+
+	dataLen := bbuf.Len()
 	err = binary.Write(bbuf, binary.LittleEndian, e.Entries)
 	if err != nil {
 		return
 	}
 
-	e.FooterChecksum = adler32.Checksum(bbuf.Bytes())
+	// only entries data
+	e.FooterChecksum = adler32.Checksum(bbuf.Bytes()[dataLen:])
 	err = binary.Write(bbuf, binary.LittleEndian, e.FooterChecksum)
 	if err != nil {
 		return

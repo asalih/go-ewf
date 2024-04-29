@@ -6,10 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/asalih/go-ewf"
-	"www.velocidex.com/golang/go-ntfs/parser"
 )
 
 func main() {
@@ -73,10 +71,11 @@ func main() {
 
 	/* ------- READERS --------*/
 
+	e01Files, err := filepath.Glob("./testdata/libewf-ec1-ext4.E01")
 	// e01Files, err := filepath.Glob("./testdata/esifirbir.E01")
 	// e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
 	// e01Files, err := filepath.Glob("./testdata/The Janitor Copy.E01")
-	e01Files, err := filepath.Glob("./testdata/testimage.E01")
+	// e01Files, err := filepath.Glob("./testdata/testimage.E01")
 	// e01Files, err := filepath.Glob("./testdata/multiseg/rand.dd.*")
 	// e01Files, err := filepath.Glob("./testdata/test.ntfs.dd.E01")
 	if err != nil {
@@ -102,59 +101,6 @@ func main() {
 
 	fmt.Println("Size: ", ewfImg.Size)
 
-	ntfs_ctx, err := parser.GetNTFSContext(ewfImg, 0)
-	if err != nil {
-		log.Fatalf("%+v", err)
-	}
-
-	ls(ntfs_ctx, "/")
-
-}
-
-func GetMFTEntry(ntfs_ctx *parser.NTFSContext, filename string) (*parser.MFT_ENTRY, error) {
-	mft_idx, _, _, err := parser.ParseMFTId(filename)
-	if err == nil {
-		// Access by mft id (e.g. 1234-128-6)
-		return ntfs_ctx.GetMFT(mft_idx)
-	} else {
-		// Access by filename.
-		dir, err := ntfs_ctx.GetMFT(5)
-		if err != nil {
-			return nil, err
-		}
-
-		return dir.Open(ntfs_ctx, filename)
-	}
-}
-
-func ls(ntfs_ctx *parser.NTFSContext, path string) {
-	fmt.Println("working ls: ", path)
-
-	dir, err := GetMFTEntry(ntfs_ctx, path)
-	if err != nil {
-		log.Fatalf("%+v", err)
-	}
-
-	for _, info := range parser.ListDir(ntfs_ctx, dir) {
-		child_entry, err := GetMFTEntry(ntfs_ctx, info.MFTId)
-		if err != nil {
-			log.Fatalf("%+v", err)
-		}
-
-		full_path, err := parser.GetFullPath(ntfs_ctx, child_entry)
-		if err != nil {
-			log.Fatalf("%+v", err)
-		}
-
-		fmt.Println([]string{
-			info.MFTId,
-			full_path,
-			fmt.Sprintf("%v", info.Size),
-			fmt.Sprintf("%v", info.Mtime.In(time.UTC)),
-			fmt.Sprintf("%v", info.IsDir),
-			info.Name,
-		})
-	}
 }
 
 func copyBuffer(dst *ewf.EWFWriter, src io.Reader, buf []byte) (written int64, err error) {
