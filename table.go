@@ -10,12 +10,15 @@ import (
 )
 
 type EWFTableSectionHeader struct {
-	NumEntries     uint32 // header
-	Pad            uint32 // header
-	BaseOffset     uint64 // header
-	Pad2           uint32 // header
-	Checksum       uint32 // header
-	Entries        []uint32
+	NumEntries uint32 // header
+	Pad        uint32 // header
+	BaseOffset uint64 // header
+	Pad2       uint32 // header
+	Checksum   uint32 // header
+
+	entriesPosition int64
+	Entries         []uint32
+
 	FooterChecksum uint32 // footer
 }
 
@@ -189,10 +192,15 @@ func (t *EWFTableSection) readHeader() error {
 		return err
 	}
 
-	section.Entries = make([]uint32, section.NumEntries)
-	err = binary.Read(t.fh, binary.LittleEndian, &section.Entries)
+	section.entriesPosition, err = t.fh.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return err
+		return nil
+	}
+
+	// skip table entries load
+	_, err = t.fh.Seek(int64(section.NumEntries*Uint32Size), io.SeekCurrent)
+	if err != nil {
+		return nil
 	}
 
 	err = binary.Read(t.fh, binary.LittleEndian, &section.FooterChecksum)
@@ -205,6 +213,37 @@ func (t *EWFTableSection) readHeader() error {
 	return nil
 }
 
+func (t *EWFTableSection) getEntry(index int64) (entryPosition uint32, err error) {
+	if t.Header.NumEntries > 0 && len(t.Header.Entries) > 0 {
+		return t.Header.Entries[index], nil
+	}
+
+	cpos, err := t.fh.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return
+	}
+	defer func() {
+		// revert back to initial position
+		_, errs := t.fh.Seek(cpos, io.SeekStart)
+		if err == nil {
+			err = errs
+		}
+	}()
+
+	_, err = t.fh.Seek(t.Header.entriesPosition, io.SeekStart)
+	if err != nil {
+		return
+	}
+
+	t.Header.Entries = make([]uint32, t.Header.NumEntries)
+	err = binary.Read(t.fh, binary.LittleEndian, &t.Header.Entries)
+	if err != nil {
+		return
+	}
+	entryPosition = t.Header.Entries[index]
+	return
+}
+
 func (t *EWFTableSection) addEntry(offset uint32) {
 	t.Header.NumEntries++
 	//its always compressed
@@ -214,11 +253,14 @@ func (t *EWFTableSection) addEntry(offset uint32) {
 
 func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 
-	if chunk < 0 || chunk >= int64(len(t.Header.Entries)) {
+	if chunk < 0 || chunk >= int64(t.Header.NumEntries) {
 		return nil, errors.New("invalid chunk index")
 	}
 
-	chunkEntry := t.Header.Entries[chunk]
+	chunkEntry, err := t.getEntry(chunk)
+	if err != nil {
+		return nil, err
+	}
 	chunkOffset := uint32(t.BaseOffset) + (chunkEntry & 0x7FFFFFFF)
 	compressed := chunkEntry>>31 == 1
 
@@ -231,7 +273,11 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 		}
 
 	} else {
-		chunkSize = t.BaseOffset + int64(t.Header.Entries[chunk+1]&0x7FFFFFFF) - int64(chunkOffset)
+		che, err := t.getEntry(chunk + 1)
+		if err != nil {
+			return nil, err
+		}
+		chunkSize = t.BaseOffset + int64(che&0x7FFFFFFF) - int64(chunkOffset)
 	}
 
 	// Non compressed chunks have a 4 byte checksum

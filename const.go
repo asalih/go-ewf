@@ -13,6 +13,7 @@ var (
 const (
 	DefaultChunkSize = 32768
 	ChecksumSize     = 4
+	Uint32Size       = 4
 )
 
 const (
