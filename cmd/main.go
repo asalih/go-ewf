@@ -74,8 +74,8 @@ func main() {
 	// e01Files, err := filepath.Glob("./testdata/libewf-ec1-ext4.E01")
 	// e01Files, err := filepath.Glob("./testdata/esifirbir.E01")
 	// e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
-	e01Files, err := filepath.Glob("./testdata/The Janitor Copy.E01")
-	// e01Files, err := filepath.Glob("./testdata/testimage.E01")
+	// e01Files, err := filepath.Glob("./testdata/The Janitor Copy.E01")
+	e01Files, err := filepath.Glob("./testdata/testimage.E01")
 	// e01Files, err := filepath.Glob("./testdata/multiseg/rand.dd.*")
 	// e01Files, err := filepath.Glob("./testdata/test.ntfs.dd.E01")
 	if err != nil {

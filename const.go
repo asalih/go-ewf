@@ -11,6 +11,10 @@ var (
 )
 
 const (
+	maxTableLength = 16375
+)
+
+const (
 	DefaultChunkSize = 32768
 	ChecksumSize     = 4
 	Uint32Size       = 4

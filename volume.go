@@ -122,11 +122,17 @@ func (v *EWFVolumeSection) Decode(fh io.ReadSeeker, section *EWFSectionDescripto
 	return nil
 }
 
-func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) error {
+func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) (err error) {
 	currentPosition, err := ewf.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		_, errs := ewf.Seek(currentPosition, io.SeekStart)
+		if err == nil {
+			err = errs
+		}
+	}()
 
 	if vol.position <= 0 {
 		desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_VOLUME)
@@ -149,15 +155,14 @@ func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) error {
 
 	_, err = ewf.Seek(vol.position, io.SeekStart)
 	if err != nil {
-		return err
+		return
 	}
 
 	_, sum, err := WriteWithSum(ewf, vol.Data)
 	if err != nil {
-		return err
+		return
 	}
 	vol.Data.SetChecksum(sum)
 
-	_, err = ewf.Seek(currentPosition, io.SeekStart)
-	return err
+	return
 }

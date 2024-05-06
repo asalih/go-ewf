@@ -128,7 +128,8 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	bufOff := off % int64(ewf.First.Volume.Data.GetSectorSize())
-	n = copy(p, buf[bufOff:bufOff+int64(length)])
+	copyLength := min(uint32(len(buf)-int(bufOff)), uint32(length))
+	n = copy(p, buf[bufOff:bufOff+int64(copyLength)])
 	return
 }
 

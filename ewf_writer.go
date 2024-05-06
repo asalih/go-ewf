@@ -3,7 +3,6 @@ package ewf
 import (
 	"crypto/md5"
 	"crypto/sha1"
-	"errors"
 	"hash"
 	"io"
 	"sync"
@@ -17,9 +16,8 @@ type WriterAtSeeker interface {
 
 // EWFWriter is helper for creating E01 images. Data is always compressed
 type EWFWriter struct {
-	mu       sync.Mutex
-	dest     io.WriterAt
-	position int64
+	mu   sync.Mutex
+	dest io.WriteSeeker
 
 	dataSize int64
 	buf      []byte
@@ -30,16 +28,14 @@ type EWFWriter struct {
 	Segment       *EWFSegment
 	SegmentOffset uint32
 	ChunkSize     uint32
-	TotalWritten  int64
 }
 
-func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
+func CreateEWF(dest io.WriteSeeker) (*EWFWriter, error) {
 	ewf := &EWFWriter{
 		dest:          dest,
 		buf:           make([]byte, 0, DefaultChunkSize),
 		SegmentOffset: 0,
 		ChunkSize:     0,
-		TotalWritten:  0,
 	}
 
 	var err error
@@ -70,11 +66,7 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 	}
 
 	ewf.Segment.Tables = []*EWFTableSection{
-		{
-			Header:  &EWFTableSectionHeader{},
-			Entries: &EWFTableSectionEntries{Data: make([]uint32, 0)},
-			Footer:  &EWFTableSectionFooter{},
-		},
+		newTable(),
 	}
 
 	ewf.Segment.Digest = new(EWFDigestSection)
@@ -118,11 +110,7 @@ func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
 	ewf.mu.Lock()
 	defer ewf.mu.Unlock()
 
-	n, err = ewf.dest.WriteAt(p, ewf.position)
-	ewf.position += int64(n)
-	if ewf.position >= ewf.TotalWritten {
-		ewf.TotalWritten += int64(n)
-	}
+	n, err = ewf.dest.Write(p)
 	return
 }
 
@@ -152,6 +140,7 @@ func (ewf *EWFWriter) WriteData(p []byte) (n int, err error) {
 func (ewf *EWFWriter) Close() error {
 	if len(ewf.buf) > 0 {
 		ewf.mu.Lock()
+		ewf.buf = fill(ewf.buf, DefaultChunkSize)
 		_, err := ewf.writeData(ewf.buf)
 		if err != nil {
 			ewf.mu.Unlock()
@@ -161,21 +150,28 @@ func (ewf *EWFWriter) Close() error {
 		ewf.mu.Unlock()
 	}
 
-	ewf.Segment.Tables[0].Offset = ewf.position
-	err := ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(ewf.Segment.Tables[0].Offset))
+	tablePosition, err := ewf.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
 	}
 
+	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(tablePosition))
+	if err != nil {
+		return err
+	}
+
+	// volume will be saved in its poisition
 	err = ewf.Segment.Volume.Encode(ewf)
 	if err != nil {
 		return err
 	}
 
-	//table2 is basically a mirror of the table so the table encodes itself twice.
-	err = ewf.Segment.Tables[0].Encode(ewf)
-	if err != nil {
-		return err
+	for _, tbl := range ewf.Segment.Tables {
+		//table2 is basically a mirror of the table so the table encodes itself twice.
+		err = tbl.Encode(ewf)
+		if err != nil {
+			return err
+		}
 	}
 
 	copy(ewf.Segment.Digest.MD5[:], ewf.md5Hasher.Sum(nil))
@@ -205,25 +201,7 @@ func (ewf *EWFWriter) Close() error {
 
 // Seek implements vfs.FileDescriptionImpl.Seek.
 func (ewf *EWFWriter) Seek(offset int64, whence int) (ret int64, err error) {
-	var newPos int64
-
-	switch whence {
-	case io.SeekStart:
-		newPos = offset
-	case io.SeekCurrent:
-		newPos = ewf.position + offset
-	case io.SeekEnd:
-		newPos = ewf.dataSize + offset
-	default:
-		return 0, errors.New("invalid whence value")
-	}
-
-	if newPos < 0 {
-		return 0, errors.New("negative position")
-	}
-
-	ewf.position = newPos
-	return newPos, nil
+	return ewf.dest.Seek(offset, whence)
 }
 
 func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
@@ -231,23 +209,23 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 		return
 	}
 
-	cpos := ewf.position
+	position, err := ewf.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, err
+	}
 	var bufc []byte
 	bufc, err = compress(p)
 	if err != nil {
 		return
 	}
 
-	n, err = ewf.dest.WriteAt(bufc, ewf.position)
-	ewf.position += int64(n)
+	n, err = ewf.dest.Write(bufc)
 	ewf.dataSize += int64(n)
 	if err != nil {
 		return
 	}
 
-	ewf.TotalWritten += int64(n)
-
-	ewf.Segment.Tables[0].addEntry(uint32(cpos))
+	ewf.Segment.addTableEntry(uint32(position))
 	ewf.Segment.Volume.Data.IncrementChunkCount()
 
 	_, err = ewf.md5Hasher.Write(p)

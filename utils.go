@@ -75,11 +75,13 @@ func compress(val []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	_, err = wr.Write(val)
 	if err != nil {
 		_ = wr.Close()
 		return nil, err
 	}
+
 	err = wr.Close()
 	if err != nil {
 		return nil, err
@@ -105,4 +107,14 @@ func getElementAtIndex(l *list.List, index int) (*list.Element, bool) {
 		}
 	}
 	return element, true
+}
+
+func fill(buf []byte, targetLen int) []byte {
+	currentLength := len(buf)
+	if currentLength >= targetLen {
+		return buf
+	}
+
+	padding := make([]byte, targetLen-currentLength)
+	return append(buf, padding...)
 }

@@ -218,3 +218,15 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 
 	return buf, nil
 }
+
+func (seg *EWFSegment) addTableEntry(offset uint32) {
+	t := seg.Tables[len(seg.Tables)-1]
+	if t.Header.NumEntries >= maxTableLength {
+		t = newTable()
+		seg.Tables = append(seg.Tables, t)
+	}
+	t.Header.NumEntries++
+	//its always compressed
+	e := offset | (1 << 31)
+	t.Entries.Data = append(t.Entries.Data, e)
+}

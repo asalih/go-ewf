@@ -76,6 +76,14 @@ type EWFTableSection struct {
 	Offset       int64
 }
 
+func newTable() *EWFTableSection {
+	return &EWFTableSection{
+		Header:  &EWFTableSectionHeader{},
+		Entries: &EWFTableSectionEntries{Data: make([]uint32, 0)},
+		Footer:  &EWFTableSectionFooter{},
+	}
+}
+
 func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
 	d.fh = fh
 	d.Segment = segment
@@ -200,13 +208,6 @@ func (t *EWFTableSection) getEntry(index int64) (entryPosition uint32, err error
 	}
 	entryPosition = t.Entries.Data[index]
 	return
-}
-
-func (t *EWFTableSection) addEntry(offset uint32) {
-	t.Header.NumEntries++
-	//its always compressed
-	e := offset | (1 << 31)
-	t.Entries.Data = append(t.Entries.Data, e)
 }
 
 func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
