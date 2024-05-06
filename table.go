@@ -15,58 +15,44 @@ type EWFTableSectionHeader struct {
 	BaseOffset uint64 // header
 	Pad2       uint32 // header
 	Checksum   uint32 // header
-
-	entriesPosition int64
-	Entries         []uint32
-
-	FooterChecksum uint32 // footer
 }
 
-func (e *EWFTableSectionHeader) size() int {
-	return binary.Size(e.NumEntries) +
-		binary.Size(e.Pad) +
-		binary.Size(e.BaseOffset) +
-		binary.Size(e.Pad2) +
-		binary.Size(e.Checksum) +
-		binary.Size(e.Entries) +
-		binary.Size(e.FooterChecksum)
+type EWFTableSectionEntries struct {
+	position int64
+	Data     []uint32
 }
 
-func (e *EWFTableSectionHeader) serialize() (buf []byte, err error) {
+type EWFTableSectionFooter struct {
+	Checksum uint32
+}
+
+func (e *EWFTableSection) totalDataSize() int {
+	return binary.Size(e.Header.NumEntries) +
+		binary.Size(e.Header.Pad) +
+		binary.Size(e.Header.BaseOffset) +
+		binary.Size(e.Header.Pad2) +
+		binary.Size(e.Header.Checksum) +
+		binary.Size(e.Entries.Data) +
+		binary.Size(e.Footer.Checksum)
+}
+
+func (e *EWFTableSection) serialize() (buf []byte, err error) {
 	bbuf := bytes.NewBuffer(nil)
-	err = binary.Write(bbuf, binary.LittleEndian, e.NumEntries)
-	if err != nil {
-		return
-	}
 
-	err = binary.Write(bbuf, binary.LittleEndian, e.Pad)
+	_, e.Header.Checksum, err = WriteWithSum(bbuf, e.Header)
 	if err != nil {
-		return
-	}
-	err = binary.Write(bbuf, binary.LittleEndian, e.BaseOffset)
-	if err != nil {
-		return
-	}
-	err = binary.Write(bbuf, binary.LittleEndian, e.Pad2)
-	if err != nil {
-		return
-	}
-
-	e.Checksum = adler32.Checksum(bbuf.Bytes())
-	err = binary.Write(bbuf, binary.LittleEndian, e.Checksum)
-	if err != nil {
-		return
+		return nil, err
 	}
 
 	dataLen := bbuf.Len()
-	err = binary.Write(bbuf, binary.LittleEndian, e.Entries)
+	err = binary.Write(bbuf, binary.LittleEndian, e.Entries.Data)
 	if err != nil {
 		return
 	}
 
 	// only entries data
-	e.FooterChecksum = adler32.Checksum(bbuf.Bytes()[dataLen:])
-	err = binary.Write(bbuf, binary.LittleEndian, e.FooterChecksum)
+	e.Footer.Checksum = adler32.Checksum(bbuf.Bytes()[dataLen:])
+	err = binary.Write(bbuf, binary.LittleEndian, e.Footer.Checksum)
 	if err != nil {
 		return
 	}
@@ -81,6 +67,8 @@ type EWFTableSection struct {
 	Section      *EWFSectionDescriptor
 	Segment      *EWFSegment
 	Header       *EWFTableSectionHeader
+	Entries      *EWFTableSectionEntries
+	Footer       *EWFTableSectionFooter
 	BaseOffset   int64
 	SectorCount  int64
 	SectorOffset int64
@@ -89,7 +77,6 @@ type EWFTableSection struct {
 }
 
 func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
-
 	d.fh = fh
 	d.Segment = segment
 	d.Section = section
@@ -98,7 +85,7 @@ func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor
 		return err
 	}
 
-	err := d.readHeader()
+	err := d.readData()
 	if err != nil {
 		return err
 	}
@@ -120,7 +107,7 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_TABLE)
 
-	tableSz := d.Header.size()
+	tableSz := d.totalDataSize()
 	desc.Size = uint64(tableSz) + DescriptorSize
 	desc.Next = uint64(currentPosition) + desc.Size
 
@@ -133,7 +120,7 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 		Descriptor: desc,
 	}
 
-	headerData, err := d.Header.serialize()
+	headerData, err := d.serialize()
 	if err != nil {
 		return err
 	}
@@ -160,62 +147,33 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 	return err
 }
 
-func (t *EWFTableSection) readHeader() error {
+func (t *EWFTableSection) readData() error {
 	if _, err := t.fh.Seek(t.Section.DataOffset, io.SeekStart); err != nil {
 		return err
 	}
 
 	section := EWFTableSectionHeader{}
 
-	err := binary.Read(t.fh, binary.LittleEndian, &section.NumEntries)
+	err := binary.Read(t.fh, binary.LittleEndian, &section)
 	if err != nil {
 		return err
 	}
-
-	err = binary.Read(t.fh, binary.LittleEndian, &section.Pad)
-	if err != nil {
-		return err
-	}
-
-	err = binary.Read(t.fh, binary.LittleEndian, &section.BaseOffset)
-	if err != nil {
-		return err
-	}
-
-	err = binary.Read(t.fh, binary.LittleEndian, &section.Pad2)
-	if err != nil {
-		return err
-	}
-
-	err = binary.Read(t.fh, binary.LittleEndian, &section.Checksum)
-	if err != nil {
-		return err
-	}
-
-	section.entriesPosition, err = t.fh.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return nil
-	}
-
-	// skip table entries load
-	_, err = t.fh.Seek(int64(section.NumEntries*Uint32Size), io.SeekCurrent)
-	if err != nil {
-		return nil
-	}
-
-	err = binary.Read(t.fh, binary.LittleEndian, &section.FooterChecksum)
-	if err != nil {
-		return err
-	}
-
 	t.Header = &section
+
+	entriesPosition, err := t.fh.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil
+	}
+	t.Entries = &EWFTableSectionEntries{
+		position: entriesPosition,
+	}
 
 	return nil
 }
 
 func (t *EWFTableSection) getEntry(index int64) (entryPosition uint32, err error) {
-	if t.Header.NumEntries > 0 && len(t.Header.Entries) > 0 {
-		return t.Header.Entries[index], nil
+	if t.Header.NumEntries > 0 && len(t.Entries.Data) > 0 {
+		return t.Entries.Data[index], nil
 	}
 
 	cpos, err := t.fh.Seek(0, io.SeekCurrent)
@@ -230,17 +188,17 @@ func (t *EWFTableSection) getEntry(index int64) (entryPosition uint32, err error
 		}
 	}()
 
-	_, err = t.fh.Seek(t.Header.entriesPosition, io.SeekStart)
+	_, err = t.fh.Seek(t.Entries.position, io.SeekStart)
 	if err != nil {
 		return
 	}
 
-	t.Header.Entries = make([]uint32, t.Header.NumEntries)
-	err = binary.Read(t.fh, binary.LittleEndian, &t.Header.Entries)
+	t.Entries.Data = make([]uint32, t.Header.NumEntries)
+	err = binary.Read(t.fh, binary.LittleEndian, &t.Entries.Data)
 	if err != nil {
 		return
 	}
-	entryPosition = t.Header.Entries[index]
+	entryPosition = t.Entries.Data[index]
 	return
 }
 
@@ -248,7 +206,7 @@ func (t *EWFTableSection) addEntry(offset uint32) {
 	t.Header.NumEntries++
 	//its always compressed
 	e := offset | (1 << 31)
-	t.Header.Entries = append(t.Header.Entries, e)
+	t.Entries.Data = append(t.Entries.Data, e)
 }
 
 func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {

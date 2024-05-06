@@ -37,6 +37,7 @@ type EWFSegment struct {
 	SectionDescriptors []*EWFSectionDescriptor
 
 	fh           io.ReadSeeker
+	isDecoded    bool
 	chunkCount   int
 	sectorCount  int
 	sectorOffset int
@@ -66,13 +67,16 @@ func NewEWFSegment(fh io.ReadSeeker) (*EWFSegment, error) {
 	return seg, nil
 }
 
-func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
+func (seg *EWFSegment) Decode(link *EWFSegment) error {
+	if seg.isDecoded {
+		return nil
+	}
 
 	offset := int64(0)
 	sectorOffset := int64(0)
 
-	if vol != nil {
-		seg.Volume = vol
+	if link != nil && link.Volume != nil {
+		seg.Volume = link.Volume
 	}
 
 	for {
@@ -178,6 +182,10 @@ func (seg *EWFSegment) Decode(vol *EWFVolumeSection) error {
 	}
 
 	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
+	if link != nil {
+		seg.sectorOffset = link.sectorOffset + link.sectorCount
+	}
+	seg.isDecoded = true
 
 	return nil
 }

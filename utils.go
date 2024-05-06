@@ -3,6 +3,7 @@ package ewf
 import (
 	"bytes"
 	"compress/zlib"
+	"container/list"
 	"encoding/binary"
 	"hash/adler32"
 	"io"
@@ -43,19 +44,14 @@ func UTF16ToUTF8(in []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-/*CMF|FLG  0x78|  (FLG|CM)
-CM 0-3 Compression method  8=deflate
-CINFO 4-7 Compression info 7=32K window size only when CM=8
-FLG 0-4 FCHECK  = CMF*256 + FLG multiple of 31 = 120*256==x mod 31 => x=156
-5 FDICT 1=> DICT follows (DICT is the Adler-32 checksum  of this sequence of bytes )
-6-7 FLEVEL compression level 0-3
-9c = 1001 1100
-FLEVEL 10
-FDICT 0
-FCHECK 12
-ADLER32  algorithm is a 32-bit extension and improvement of the Fletcher algorithm,
-A compliant decompressor must check CMF, FLG, and ADLER32,
-*/
+func ToMap[K comparable, T any](keys []K, vals []T) map[K]T {
+	m := map[K]T{}
+
+	for idx, key := range keys {
+		m[key] = vals[idx]
+	}
+	return m
+}
 
 func decompress(val []byte) ([]byte, error) {
 	b := bytes.NewReader(val)
@@ -92,11 +88,21 @@ func compress(val []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func ToMap[K comparable, T any](keys []K, vals []T) map[K]T {
-	m := map[K]T{}
-
-	for idx, key := range keys {
-		m[key] = vals[idx]
+func getElementAtIndex(l *list.List, index int) (*list.Element, bool) {
+	if index < 0 || index >= l.Len() {
+		return nil, false // Index out of bounds
 	}
-	return m
+	var element *list.Element
+	if index < l.Len()/2 { // Optimize traversal direction based on index
+		element = l.Front()
+		for i := 0; i < index; i++ {
+			element = element.Next()
+		}
+	} else {
+		element = l.Back()
+		for i := l.Len() - 1; i > index; i-- {
+			element = element.Prev()
+		}
+	}
+	return element, true
 }

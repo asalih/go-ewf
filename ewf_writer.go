@@ -71,9 +71,9 @@ func CreateEWF(dest io.WriterAt) (*EWFWriter, error) {
 
 	ewf.Segment.Tables = []*EWFTableSection{
 		{
-			Header: &EWFTableSectionHeader{
-				Entries: make([]uint32, 0),
-			},
+			Header:  &EWFTableSectionHeader{},
+			Entries: &EWFTableSectionEntries{Data: make([]uint32, 0)},
+			Footer:  &EWFTableSectionFooter{},
 		},
 	}
 

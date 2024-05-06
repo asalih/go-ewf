@@ -1,6 +1,7 @@
 package ewf
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"io"
@@ -35,9 +36,9 @@ const (
 )
 
 type EWFReader struct {
-	Segments       []*EWFSegment
-	First          *EWFSegment
-	SegmentOffsets []uint32
+	segments *list.List
+	First    *EWFSegment
+	// SegmentOffsets []uint32
 
 	ChunkSize uint32
 	Size      int64
@@ -47,53 +48,63 @@ type EWFReader struct {
 
 func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf := &EWFReader{
-		Segments:       make([]*EWFSegment, 0),
-		SegmentOffsets: make([]uint32, 0),
-		ChunkSize:      0,
-		Size:           0,
+		segments: list.New(),
+		// SegmentOffsets: make([]uint32, 0),
+		ChunkSize: 0,
+		Size:      0,
 	}
 
+	allSegments := make([]*EWFSegment, 0)
 	for _, file := range fhs {
 		segment, err := NewEWFSegment(file)
 		if err != nil {
 			return nil, err
 		}
 
-		ewf.Segments = append(ewf.Segments, segment)
+		allSegments = append(allSegments, segment)
 	}
 
-	sort.SliceStable(ewf.Segments, func(i, j int) bool {
-		return ewf.Segments[i].EWFHeader.SegmentNumber < ewf.Segments[j].EWFHeader.SegmentNumber
+	sort.SliceStable(allSegments, func(i, j int) bool {
+		return allSegments[i].EWFHeader.SegmentNumber < allSegments[j].EWFHeader.SegmentNumber
 	})
 
-	if len(ewf.Segments) == 0 {
+	if len(allSegments) == 0 {
 		return nil, fmt.Errorf("failed to load EWF")
 	}
 
-	ewf.First = ewf.Segments[0]
-
-	var segmentOffset uint32
-	for _, segment := range ewf.Segments {
-		// the table in the segment requires volume for calculations so needed to pass it from the first segment
-		err := segment.Decode(ewf.First.Volume)
-		if err != nil {
-			return nil, err
-		}
-
-		if segmentOffset != 0 {
-			ewf.SegmentOffsets = append(ewf.SegmentOffsets, segmentOffset)
-		}
-		// segment.offset = int64(segmentOffset * ewf.First.Volume.Data.GetSectorSize())
-		segment.sectorOffset = int(segmentOffset)
-		segmentOffset += uint32(segment.sectorCount)
+	ewf.First = allSegments[0]
+	err := ewf.First.Decode(nil)
+	if err != nil {
+		return nil, err
 	}
+
+	for _, v := range allSegments {
+		_ = ewf.segments.PushBack(v)
+	}
+
+	// var segmentOffset uint32
+	// for i, segment := range ewf.Segments {
+	// 	ts := time.Now()
+	// 	// the table in the segment requires volume for calculations so needed to pass it from the first segment
+	// 	err := segment.Decode(ewf.First.Volume)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	fmt.Printf("idx: %v, time: %s\n", i, time.Since(ts))
+
+	// 	if segmentOffset != 0 {
+	// 		ewf.SegmentOffsets = append(ewf.SegmentOffsets, segmentOffset)
+	// 	}
+	// 	segment.sectorOffset = int(segmentOffset)
+	// 	segmentOffset += uint32(segment.sectorCount)
+	// }
 
 	if ewf.First.Header == nil || ewf.First.Volume == nil {
 		return nil, fmt.Errorf("failed to load EWF")
 	}
 
 	ewf.ChunkSize = ewf.First.Volume.Data.GetSectorCount() * ewf.First.Volume.Data.GetSectorSize()
-
 	ewf.Size = int64(ewf.First.Volume.Data.GetChunkCount() * ewf.ChunkSize)
 
 	return ewf, nil
@@ -144,19 +155,56 @@ func (ewf *EWFReader) Seek(offset int64, whence int) (ret int64, err error) {
 	return newPos, nil
 }
 
+func (ewf *EWFReader) Segment(index int) (*EWFSegment, *list.Element, error) {
+	elem, ok := getElementAtIndex(ewf.segments, index)
+	if !ok {
+		return nil, nil, errors.New("not found")
+	}
+
+	seg := elem.Value.(*EWFSegment)
+	if !seg.isDecoded {
+		var prevSeg *EWFSegment
+		if pe := elem.Prev(); pe != nil {
+			prevSeg = pe.Value.(*EWFSegment)
+		}
+		err := seg.Decode(prevSeg)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return seg, elem, nil
+}
+
+func (ewf *EWFReader) calculateIndex(sector uint32) (int, error) {
+	for i := 0; i < ewf.segments.Len(); i++ {
+		seg, _, err := ewf.Segment(i)
+		if err != nil {
+			return 0, err
+		}
+		if int(sector) > seg.sectorOffset+seg.sectorCount {
+			continue
+		}
+		return i, nil
+	}
+	return 0, fmt.Errorf("sector too long: %v", sector)
+}
+
 func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
 	buf := make([]byte, 0)
 
-	segmentIdx := sort.Search(len(ewf.SegmentOffsets), func(i int) bool {
-		return ewf.SegmentOffsets[i] > sector
-	})
+	segmentIdx, err := ewf.calculateIndex(sector)
+	if err != nil {
+		return nil, err
+	}
 
 	for count > 0 {
-		if segmentIdx >= len(ewf.Segments) {
+		if segmentIdx >= ewf.segments.Len() {
 			return buf, io.EOF
 		}
-		segment := ewf.Segments[segmentIdx]
-
+		segment, _, err := ewf.Segment(segmentIdx)
+		if err != nil {
+			return nil, err
+		}
 		segmentRemainingSectors := uint32(segment.sectorCount) - (sector - uint32(segment.sectorOffset))
 		segmentSectors := min(segmentRemainingSectors, count)
 		if segmentSectors <= 0 {

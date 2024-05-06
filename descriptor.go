@@ -48,7 +48,10 @@ func NewEWFSectionDescriptor(fh io.ReadSeeker) (*EWFSectionDescriptor, error) {
 		return nil, err
 	}
 
-	dataOffset, _ := fh.Seek(0, io.SeekCurrent)
+	dataOffset, err := fh.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, err
+	}
 
 	return &EWFSectionDescriptor{
 		fh:         fh,
