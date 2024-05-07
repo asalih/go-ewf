@@ -50,7 +50,7 @@ func CreateEWF(dest io.WriteSeeker) (*EWFWriter, error) {
 	}
 	copy(ewf.Segment.EWFHeader.Signature[:], []byte(EVFSignature))
 
-	err = ewf.Segment.EWFHeader.Encode(ewf)
+	err = ewf.Segment.EWFHeader.Encode(ewf.dest)
 	if err != nil {
 		return nil, err
 	}
@@ -91,30 +91,22 @@ func (ewf *EWFWriter) AddMediaInfo(key EWFMediaInfo, value string) {
 }
 
 func (ewf *EWFWriter) Start() error {
-	err := ewf.Segment.Header.Encode(ewf)
+	err := ewf.Segment.Header.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
 	// Volume comes before data we put so default volume used as placeholder
-	err = ewf.Segment.Volume.Encode(ewf)
+	err = ewf.Segment.Volume.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
 	// sectors descriptor also comes before the data
-	return ewf.Segment.Sectors.Encode(ewf, 0, 0)
+	return ewf.Segment.Sectors.Encode(ewf.dest, 0, 0)
 }
 
 func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
-	ewf.mu.Lock()
-	defer ewf.mu.Unlock()
-
-	n, err = ewf.dest.Write(p)
-	return
-}
-
-func (ewf *EWFWriter) WriteData(p []byte) (n int, err error) {
 	ewf.mu.Lock()
 	defer ewf.mu.Unlock()
 
@@ -155,20 +147,20 @@ func (ewf *EWFWriter) Close() error {
 		return err
 	}
 
-	err = ewf.Segment.Sectors.Encode(ewf, uint64(ewf.dataSize), uint64(tablePosition))
+	err = ewf.Segment.Sectors.Encode(ewf.dest, uint64(ewf.dataSize), uint64(tablePosition))
 	if err != nil {
 		return err
 	}
 
 	// volume will be saved in its poisition
-	err = ewf.Segment.Volume.Encode(ewf)
+	err = ewf.Segment.Volume.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
 	for _, tbl := range ewf.Segment.Tables {
 		//table2 is basically a mirror of the table so the table encodes itself twice.
-		err = tbl.Encode(ewf)
+		err = tbl.Encode(ewf.dest)
 		if err != nil {
 			return err
 		}
@@ -176,25 +168,25 @@ func (ewf *EWFWriter) Close() error {
 
 	copy(ewf.Segment.Digest.MD5[:], ewf.md5Hasher.Sum(nil))
 	copy(ewf.Segment.Digest.SHA1[:], ewf.sha1Hasher.Sum(nil))
-	err = ewf.Segment.Digest.Encode(ewf)
+	err = ewf.Segment.Digest.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
 	copy(ewf.Segment.Hash.MD5[:], ewf.md5Hasher.Sum(nil))
-	err = ewf.Segment.Hash.Encode(ewf)
+	err = ewf.Segment.Hash.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
 	ewf.Segment.Data.ChunkCount = ewf.Segment.Volume.Data.GetChunkCount()
 	ewf.Segment.Data.Sectors = uint64(ewf.Segment.Volume.Data.GetSectorCount() * ewf.Segment.Volume.Data.GetChunkCount())
-	err = ewf.Segment.Data.Encode(ewf)
+	err = ewf.Segment.Data.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}
 
-	err = ewf.Segment.Done.Encode(ewf)
+	err = ewf.Segment.Done.Encode(ewf.dest)
 
 	return err
 }

@@ -262,12 +262,6 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 
 // Helper function to calculate the size of the last chunk
 func (t *EWFTableSection) calculateLastChunkSize(chunkOffset uint32) int64 {
-	// EWF sucks
-	// We don't know the chunk size, so try to determine it using the offset of the next chunk
-	// When it's the last chunk in the table though, this becomes trickier.
-	// We have to check if the chunk data is preceding the table, or if it's contained within the table section
-	// Then we can calculate the chunk size using these offsets
-
 	if chunkOffset < uint32(t.Section.offset) {
 		return t.Section.offset - int64(chunkOffset)
 	}
