@@ -13,7 +13,6 @@ import (
 func main() {
 
 	e01Source, err := os.Open("./testdata/ezero1.vhd")
-	// e01Source, err := os.Open("./testdata/ahmetsalih_vhd11.001")
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -59,7 +58,7 @@ func main() {
 		fmt.Println(err)
 	}
 
-	_, err = copyBuffer(ewfc, vhdNtfsRdr, make([]byte, 1024*1024))
+	_, err = io.CopyBuffer(ewfc, vhdNtfsRdr, make([]byte, 1024*1024))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,13 +70,7 @@ func main() {
 
 	/* ------- READERS --------*/
 
-	// e01Files, err := filepath.Glob("./testdata/libewf-ec1-ext4.E01")
-	// e01Files, err := filepath.Glob("./testdata/esifirbir.E01")
-	// e01Files, err := filepath.Glob("./testdata/The Janitor.E011")
-	// e01Files, err := filepath.Glob("./testdata/The Janitor Copy.E01")
 	e01Files, err := filepath.Glob("./testdata/testimage.E01")
-	// e01Files, err := filepath.Glob("./testdata/multiseg/rand.dd.*")
-	// e01Files, err := filepath.Glob("./testdata/test.ntfs.dd.E01")
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -101,35 +94,4 @@ func main() {
 
 	fmt.Println("Size: ", ewfImg.Size)
 
-}
-
-func copyBuffer(dst *ewf.EWFWriter, src io.Reader, buf []byte) (written int64, err error) {
-	for {
-		nr, er := src.Read(buf)
-		if nr > 0 {
-			nw, ew := dst.WriteData(buf[0:nr])
-			if nw < 0 || nr < nw {
-				nw = 0
-				if ew == nil {
-					ew = fmt.Errorf("invalid write")
-				}
-			}
-			written += int64(nw)
-			if ew != nil {
-				err = ew
-				break
-			}
-			if nr != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		if er != nil {
-			if er != io.EOF {
-				err = er
-			}
-			break
-		}
-	}
-	return written, err
 }
