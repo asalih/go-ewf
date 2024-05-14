@@ -1,10 +1,12 @@
-package ewf
+package evf1
 
 import (
 	"bytes"
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/asalih/go-ewf/shared"
 )
 
 type EWFMediaInfo string
@@ -67,21 +69,21 @@ type EWFHeaderSection struct {
 	MediaInfo     map[string]string
 }
 
-func (ewfHeader *EWFHeaderSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
+func (ewfHeader *EWFHeaderSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor) error {
 	fh.Seek(section.DataOffset, io.SeekStart)
 	rd := make([]byte, section.Size)
 	if _, err := fh.Read(rd); err != nil {
 		return err
 	}
 
-	data, err := decompress(rd)
+	data, err := shared.DecompressZlib(rd)
 	if err != nil {
 		return err
 	}
 
 	// Starts with a BOM
 	if data[0] == 255 || data[1] == 254 {
-		data = []byte(UTF16ToUTF8(data))
+		data = []byte(shared.UTF16ToUTF8(data))
 	}
 
 	var identifiers []string
@@ -105,7 +107,7 @@ func (ewfHeader *EWFHeaderSection) Decode(fh io.ReadSeeker, section *EWFSectionD
 			}
 		}
 	}
-	ewfHeader.MediaInfo = ToMap(identifiers, values)
+	ewfHeader.MediaInfo = shared.ToMap(identifiers, values)
 
 	return nil
 }
@@ -129,7 +131,7 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 	buf.WriteString(strings.Join(mv, string(fieldDelim)))
 	buf.Write(newLineDelim)
 
-	zlHeader, err := compress(buf.Bytes())
+	zlHeader, err := shared.CompressZlib(buf.Bytes())
 	if err != nil {
 		return err
 	}
@@ -146,7 +148,7 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 
 	// header section and its data appears twice subsequently
 	// after first write, we arrange the "Next" field then write
-	_, desc.Checksum, err = WriteWithSum(ewf, desc)
+	_, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
 	}
@@ -157,7 +159,7 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 
 	desc.Next = desc.Next + desc.Size
 
-	_, _, err = WriteWithSum(ewf, desc)
+	_, _, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
 	}

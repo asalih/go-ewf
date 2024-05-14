@@ -1,14 +1,16 @@
-package ewf
+package evf1
 
 import (
 	"io"
+
+	"github.com/asalih/go-ewf/shared"
 )
 
 type EWFSectorsSection struct {
 	position int64
 }
 
-func (d *EWFSectorsSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
+func (d *EWFSectorsSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor) error {
 	//sectors has no data
 	return nil
 }
@@ -40,6 +42,6 @@ func (d *EWFSectorsSection) Encode(ewf io.WriteSeeker, dataSize, next uint64) (e
 		return err
 	}
 
-	_, desc.Checksum, err = WriteWithSum(ewf, desc)
+	_, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	return
 }

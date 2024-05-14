@@ -1,8 +1,10 @@
-package ewf
+package evf1
 
 import (
 	"encoding/binary"
 	"io"
+
+	"github.com/asalih/go-ewf/shared"
 )
 
 type EWFVolume interface {
@@ -93,7 +95,7 @@ func (e *EWFVolumeSectionData) IncrementChunkCount() {
 	e.TotalSectorCount = uint64(e.ChunkCount) * uint64(e.GetSectorCount())
 }
 
-func (v *EWFVolumeSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, segment *EWFSegment) error {
+func (v *EWFVolumeSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor) error {
 	_, err := fh.Seek(section.DataOffset, io.SeekStart)
 	if err != nil {
 		return err
@@ -143,7 +145,7 @@ func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) (err error) {
 		desc.Next = desc.Size + uint64(currentPosition)
 
 		var err error
-		_, desc.Checksum, err = WriteWithSum(ewf, desc)
+		_, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 		if err != nil {
 			return err
 		}
@@ -158,7 +160,7 @@ func (vol *EWFVolumeSection) Encode(ewf io.WriteSeeker) (err error) {
 		return
 	}
 
-	_, sum, err := WriteWithSum(ewf, vol.Data)
+	_, sum, err := shared.WriteWithSum(ewf, vol.Data)
 	if err != nil {
 		return
 	}

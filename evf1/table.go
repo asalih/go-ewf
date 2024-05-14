@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"hash/adler32"
 	"io"
 	"math"
+
+	"github.com/asalih/go-ewf/shared"
 )
 
 type EWFTableSectionHeader struct {
@@ -39,7 +41,7 @@ func (e *EWFTableSection) totalDataSize() int {
 func (e *EWFTableSection) serialize() (buf []byte, err error) {
 	bbuf := bytes.NewBuffer(nil)
 
-	_, e.Header.Checksum, err = WriteWithSum(bbuf, e.Header)
+	_, e.Header.Checksum, err = shared.WriteWithSum(bbuf, e.Header)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +121,7 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 	desc.Size = uint64(tableSz) + DescriptorSize
 	desc.Next = uint64(currentPosition) + desc.Size
 
-	_, desc.Checksum, err = WriteWithSum(ewf, desc)
+	_, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
 	}
@@ -146,7 +148,7 @@ func (d *EWFTableSection) Encode(ewf io.WriteSeeker) error {
 	desc.Size = uint64(tableSz) + DescriptorSize
 	desc.Next = uint64(currentPosition) + desc.Size
 
-	_, _, err = WriteWithSum(ewf, desc)
+	_, _, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {
 		return err
 	}
@@ -254,7 +256,7 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 	}
 
 	if compressed {
-		return decompress(buf)
+		return shared.DecompressZlib(buf)
 	}
 
 	return buf, nil

@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 const (
 	EVFSignature = "EVF\x09\x0d\x0a\xff\x00"

@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 import (
 	"encoding/binary"
@@ -86,36 +86,35 @@ func (seg *EWFSegment) Decode(link *EWFSegment) error {
 		}
 		seg.SectionDescriptors = append(seg.SectionDescriptors, section)
 
-		if (section.Type == EWF_SECTION_TYPE_HEADER || section.Type == EWF_SECTION_TYPE_HEADER2) && seg.Header == nil {
-			h := new(EWFHeaderSection)
-			err := h.Decode(seg.fh, section, seg)
-			if err != nil {
-				return err
+		switch section.Type {
+		case EWF_SECTION_TYPE_HEADER, EWF_SECTION_TYPE_HEADER2:
+			if seg.Header == nil {
+				h := new(EWFHeaderSection)
+				if err := h.Decode(seg.fh, section); err != nil {
+					return err
+				}
+				seg.Header = h
 			}
-			seg.Header = h
-		}
 
-		if section.Type == EWF_SECTION_TYPE_DISK || section.Type == EWF_SECTION_TYPE_VOLUME && seg.Volume == nil {
-			v := new(EWFVolumeSection)
-			err := v.Decode(seg.fh, section, seg)
-			if err != nil {
-				return err
+		case EWF_SECTION_TYPE_DISK, EWF_SECTION_TYPE_VOLUME:
+			if seg.Volume == nil {
+				v := new(EWFVolumeSection)
+				if err := v.Decode(seg.fh, section); err != nil {
+					return err
+				}
+				seg.Volume = v
 			}
-			seg.Volume = v
-		}
-		if section.Type == EWF_SECTION_TYPE_SECTORS {
+
+		case EWF_SECTION_TYPE_SECTORS:
 			v := new(EWFSectorsSection)
-			err := v.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := v.Decode(seg.fh, section); err != nil {
 				return err
 			}
 			seg.Sectors = v
-		}
 
-		if section.Type == EWF_SECTION_TYPE_TABLE {
+		case EWF_SECTION_TYPE_TABLE:
 			table := new(EWFTableSection)
-			err := table.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := table.Decode(seg.fh, section, seg); err != nil {
 				return err
 			}
 
@@ -127,52 +126,45 @@ func (seg *EWFSegment) Decode(link *EWFSegment) error {
 			sectorOffset += table.SectorCount
 
 			seg.Tables = append(seg.Tables, table)
-		}
 
-		if section.Type == EWF_SECTION_TYPE_DIGEST {
+		case EWF_SECTION_TYPE_DIGEST:
 			dig := new(EWFDigestSection)
-			err := dig.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := dig.Decode(seg.fh, section); err != nil {
 				return err
 			}
-
 			seg.Digest = dig
-		}
 
-		if section.Type == EWF_SECTION_TYPE_HASH {
+		case EWF_SECTION_TYPE_HASH:
 			hashSec := new(EWFHashSection)
-			err := hashSec.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := hashSec.Decode(seg.fh, section); err != nil {
 				return err
 			}
-
 			seg.Hash = hashSec
-		}
 
-		if section.Type == EWF_SECTION_TYPE_DATA {
+		case EWF_SECTION_TYPE_DATA:
 			dataSec := new(EWFDataSection)
-			err := dataSec.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := dataSec.Decode(seg.fh, section); err != nil {
 				return err
 			}
-
 			seg.Data = dataSec
-		}
 
-		if section.Type == EWF_SECTION_TYPE_DONE {
+		case EWF_SECTION_TYPE_DONE:
 			doneSec := new(EWFDoneSection)
-			err := doneSec.Decode(seg.fh, section, seg)
-			if err != nil {
+			if err := doneSec.Decode(seg.fh, section); err != nil {
 				return err
 			}
-
 			seg.Done = doneSec
+
+		default:
+			// Handle any unknown section types or add a fallback here if needed
 		}
 
+		// Exit the loop if we have reached the end or a specific condition
 		if section.Next == uint64(offset) || section.Type == EWF_SECTION_TYPE_DONE {
 			break
 		}
 
+		// Update the offset and seek to the next section
 		offset = int64(section.Next)
 		seg.fh.Seek(offset, io.SeekStart)
 	}

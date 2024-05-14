@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 import (
 	"bytes"

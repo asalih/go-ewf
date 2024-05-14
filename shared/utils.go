@@ -1,8 +1,7 @@
-package ewf
+package shared
 
 import (
 	"bytes"
-	"compress/zlib"
 	"container/list"
 	"encoding/binary"
 	"hash/adler32"
@@ -53,44 +52,7 @@ func ToMap[K comparable, T any](keys []K, vals []T) map[K]T {
 	return m
 }
 
-func decompress(val []byte) ([]byte, error) {
-	b := bytes.NewReader(val)
-
-	zr, err := zlib.NewReader(b)
-	if err != nil {
-		if err != io.EOF {
-			return nil, err
-		}
-		err = nil
-	}
-	defer zr.Close()
-
-	return io.ReadAll(zr)
-}
-
-func compress(val []byte) ([]byte, error) {
-	buf := bytes.NewBuffer(nil)
-
-	wr, err := zlib.NewWriterLevel(buf, zlib.BestSpeed)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = wr.Write(val)
-	if err != nil {
-		_ = wr.Close()
-		return nil, err
-	}
-
-	err = wr.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-func getElementAtIndex(l *list.List, index int) (*list.Element, bool) {
+func GetListElement(l *list.List, index int) (*list.Element, bool) {
 	if index < 0 || index >= l.Len() {
 		return nil, false // Index out of bounds
 	}
@@ -109,7 +71,7 @@ func getElementAtIndex(l *list.List, index int) (*list.Element, bool) {
 	return element, true
 }
 
-func fill(buf []byte, targetLen int) []byte {
+func PadBytes(buf []byte, targetLen int) []byte {
 	currentLength := len(buf)
 	if currentLength >= targetLen {
 		return buf

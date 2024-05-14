@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 import (
 	"container/list"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/asalih/go-ewf/shared"
 )
 
 type MediaType uint8
@@ -36,22 +38,19 @@ const (
 )
 
 type EWFReader struct {
-	segments *list.List
-	First    *EWFSegment
-	// SegmentOffsets []uint32
-
+	First     *EWFSegment
 	ChunkSize uint32
 	Size      int64
 
+	segments *list.List
 	position int64
 }
 
 func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf := &EWFReader{
-		segments: list.New(),
-		// SegmentOffsets: make([]uint32, 0),
 		ChunkSize: 0,
 		Size:      0,
+		segments:  list.New(),
 	}
 
 	allSegments := make([]*EWFSegment, 0)
@@ -81,24 +80,6 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	for _, v := range allSegments {
 		_ = ewf.segments.PushBack(v)
 	}
-
-	// var segmentOffset uint32
-	// for i, segment := range ewf.Segments {
-	// 	ts := time.Now()
-	// 	// the table in the segment requires volume for calculations so needed to pass it from the first segment
-	// 	err := segment.Decode(ewf.First.Volume)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-
-	// 	fmt.Printf("idx: %v, time: %s\n", i, time.Since(ts))
-
-	// 	if segmentOffset != 0 {
-	// 		ewf.SegmentOffsets = append(ewf.SegmentOffsets, segmentOffset)
-	// 	}
-	// 	segment.sectorOffset = int(segmentOffset)
-	// 	segmentOffset += uint32(segment.sectorCount)
-	// }
 
 	if ewf.First.Header == nil || ewf.First.Volume == nil {
 		return nil, fmt.Errorf("failed to load EWF")
@@ -157,7 +138,7 @@ func (ewf *EWFReader) Seek(offset int64, whence int) (ret int64, err error) {
 }
 
 func (ewf *EWFReader) Segment(index int) (*EWFSegment, *list.Element, error) {
-	elem, ok := getElementAtIndex(ewf.segments, index)
+	elem, ok := shared.GetListElement(ewf.segments, index)
 	if !ok {
 		return nil, nil, errors.New("not found")
 	}

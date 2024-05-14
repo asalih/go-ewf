@@ -1,4 +1,4 @@
-package ewf
+package evf1
 
 import (
 	"crypto/md5"
@@ -6,20 +6,16 @@ import (
 	"hash"
 	"io"
 	"sync"
-)
 
-type WriterAtSeeker interface {
-	io.Writer
-	io.WriterAt
-	io.Seeker
-}
+	"github.com/asalih/go-ewf/shared"
+)
 
 // EWFWriter is helper for creating E01 images. Data is always compressed
 type EWFWriter struct {
 	mu   sync.Mutex
 	dest io.WriteSeeker
 
-	dataSize int64
+	dataSize uint64
 	buf      []byte
 
 	md5Hasher  hash.Hash
@@ -132,7 +128,7 @@ func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
 func (ewf *EWFWriter) Close() error {
 	if len(ewf.buf) > 0 {
 		ewf.mu.Lock()
-		ewf.buf = fill(ewf.buf, DefaultChunkSize)
+		ewf.buf = shared.PadBytes(ewf.buf, DefaultChunkSize)
 		_, err := ewf.writeData(ewf.buf)
 		if err != nil {
 			ewf.mu.Unlock()
@@ -206,13 +202,13 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 		return 0, err
 	}
 	var bufc []byte
-	bufc, err = compress(p)
+	bufc, err = shared.CompressZlib(p)
 	if err != nil {
 		return
 	}
 
 	n, err = ewf.dest.Write(bufc)
-	ewf.dataSize += int64(n)
+	ewf.dataSize += uint64(n)
 	if err != nil {
 		return
 	}
