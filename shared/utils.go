@@ -42,6 +42,17 @@ func UTF16ToUTF8(in []byte) string {
 	binary.Read(buff, binary.LittleEndian, &u16)
 	return string(utf16.Decode(u16))
 }
+func UTF8ToUTF16(utf8Bytes []byte) []byte {
+	str := string(utf8Bytes)
+	utf16Runes := utf16.Encode([]rune(str))
+	// Convert utf16Runes to []byte
+	byteBuffer := []byte{0xFF, 0xFE}
+	for _, r := range utf16Runes {
+		byteBuffer = append(byteBuffer, byte(r&0xFF), byte(r>>8))
+	}
+
+	return byteBuffer
+}
 
 func ToMap[K comparable, T any](keys []K, vals []T) map[K]T {
 	m := map[K]T{}

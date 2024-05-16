@@ -46,11 +46,6 @@ func CreateEWF(dest io.WriteSeeker) (*EWFWriter, error) {
 	}
 	copy(ewf.Segment.EWFHeader.Signature[:], []byte(EVFSignature))
 
-	err = ewf.Segment.EWFHeader.Encode(ewf.dest)
-	if err != nil {
-		return nil, err
-	}
-
 	ewf.Segment.Header = &EWFHeaderSection{}
 	ewf.Segment.Header.CategoryName = "main"
 	ewf.Segment.Header.NofCategories = "1"
@@ -87,7 +82,12 @@ func (ewf *EWFWriter) AddMediaInfo(key EWFMediaInfo, value string) {
 }
 
 func (ewf *EWFWriter) Start() error {
-	err := ewf.Segment.Header.Encode(ewf.dest)
+	err := ewf.Segment.EWFHeader.Encode(ewf.dest)
+	if err != nil {
+		return err
+	}
+
+	err = ewf.Segment.Header.Encode(ewf.dest)
 	if err != nil {
 		return err
 	}

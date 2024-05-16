@@ -19,7 +19,6 @@ func (d *EWFDoneSection) Encode(ewf io.Writer, previousDescriptorPosition int64)
 
 	desc.DataSize = 0
 	desc.PreviousOffset = uint64(previousDescriptorPosition)
-	desc.DataFlags = EWF_CHUNK_DATA_FLAG_HAS_CHECKSUM
 
 	descN, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {

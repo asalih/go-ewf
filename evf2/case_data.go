@@ -115,11 +115,15 @@ func (ewfHeader *EWFCaseDataSection) Encode(ewf io.Writer, previousDescriptorPos
 	buf.Write(newLineDelim)
 	buf.WriteString(strings.Join(mv, string(fieldDelim)))
 	buf.Write(newLineDelim)
+	buf.Write(newLineDelim)
 
-	zlHeader, err := shared.CompressZlib(buf.Bytes())
+	utf16Data := shared.UTF8ToUTF16(buf.Bytes())
+	zlHeader, err := shared.CompressZlib(utf16Data)
 	if err != nil {
 		return 0, 0, err
 	}
+
+	zlHeader, paddingSize := alignTo16Bytes(zlHeader[:])
 
 	dataN, err = ewf.Write(zlHeader)
 	if err != nil {
@@ -130,7 +134,7 @@ func (ewfHeader *EWFCaseDataSection) Encode(ewf io.Writer, previousDescriptorPos
 
 	desc.DataSize = uint64(len(zlHeader))
 	desc.PreviousOffset = uint64(previousDescriptorPosition)
-	desc.DataFlags = EWF_CHUNK_DATA_FLAG_IS_COMPRESSED
+	desc.PaddingSize = uint32(paddingSize)
 
 	// header section and its data appears twice subsequently
 	// after first write, we arrange the "Next" field then write

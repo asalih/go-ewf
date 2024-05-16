@@ -24,3 +24,4 @@ go.work
 *.E0*
 *.Ex0*
 *.vhd
+.vscode

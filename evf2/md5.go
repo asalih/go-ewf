@@ -7,8 +7,6 @@ import (
 	"github.com/asalih/go-ewf/shared"
 )
 
-const md5SectionPaddingSize = 12
-
 type EWFMD5Section struct {
 	Hash     [16]uint8
 	Checksum uint32
@@ -34,18 +32,17 @@ func (d *EWFMD5Section) Encode(ewf io.Writer, previousDescriptorPosition int64) 
 		return 0, 0, nil
 	}
 
-	//alignment padding
-	err = binary.Write(ewf, binary.LittleEndian, [md5SectionPaddingSize]byte{})
+	pad, padSize := alignSizeTo16Bytes(dataN)
+	_, err = ewf.Write(pad)
 	if err != nil {
 		return 0, 0, nil
 	}
-	dataN += md5SectionPaddingSize
 
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_MD5_HASH)
 
-	desc.DataSize = uint64(binary.Size(d))
+	desc.DataSize = uint64(binary.Size(d) + padSize)
 	desc.PreviousOffset = uint64(previousDescriptorPosition)
-	desc.DataFlags = EWF_CHUNK_DATA_FLAG_HAS_CHECKSUM
+	desc.PaddingSize = uint32(padSize)
 
 	descN, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {

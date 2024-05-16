@@ -12,11 +12,10 @@ import (
 )
 
 type EWFTableSectionHeader struct {
-	FirstChunkNumber uint64   // header
-	NumEntries       uint32   // header
-	Pad              uint32   // header
-	Checksum         uint32   // header
-	Pad2             [12]byte //header
+	FirstChunkNumber uint64 // header
+	NumEntries       uint32 // header
+	Pad              uint32 // header
+	Checksum         uint32 // header
 }
 
 type EWFTableSectionEntries struct {
@@ -31,49 +30,57 @@ type EWFTableSectionEntry struct {
 
 type EWFTableSectionFooter struct {
 	Checksum uint32
-	Pad      [12]byte
 }
 
-func (e *EWFTableSection) serialize() (buf []byte, err error) {
+func (e *EWFTableSection) serialize() (buf []byte, totalPaddingSize int, err error) {
 	bbuf := bytes.NewBuffer(nil)
 
 	err = binary.Write(bbuf, binary.LittleEndian, e.Header.FirstChunkNumber)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	err = binary.Write(bbuf, binary.LittleEndian, e.Header.NumEntries)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	err = binary.Write(bbuf, binary.LittleEndian, e.Header.Pad)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	e.Header.Checksum = adler32.Checksum(bbuf.Bytes())
 	err = binary.Write(bbuf, binary.LittleEndian, e.Header.Checksum)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	err = binary.Write(bbuf, binary.LittleEndian, e.Header.Pad2)
+	headerPad, headerPaddingSize := alignSizeTo16Bytes(bbuf.Len())
+	_, err = bbuf.Write(headerPad)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	dataLen := bbuf.Len()
+	headerLen := bbuf.Len()
 	err = binary.Write(bbuf, binary.LittleEndian, e.Entries.Data)
 	if err != nil {
 		return
 	}
 
 	// only entries data
-	e.Footer.Checksum = adler32.Checksum(bbuf.Bytes()[dataLen:])
+	restLen := bbuf.Len()
+	e.Footer.Checksum = adler32.Checksum(bbuf.Bytes()[headerLen:])
 	err = binary.Write(bbuf, binary.LittleEndian, e.Footer)
 	if err != nil {
 		return
 	}
 
+	footerPadding, footerPaddingSize := alignSizeTo16Bytes(bbuf.Len() - restLen)
+	_, err = bbuf.Write(footerPadding)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	totalPaddingSize = headerPaddingSize + footerPaddingSize
 	buf = bbuf.Bytes()
 	return
 }
@@ -133,7 +140,7 @@ func (d *EWFTableSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor
 
 func (d *EWFTableSection) Encode(ewf io.Writer, previousDescriptorPosition int64) (dataN int, descN int, err error) {
 
-	headerData, err := d.serialize()
+	headerData, paddingSize, err := d.serialize()
 	if err != nil {
 		return 0, 0, err
 	}
@@ -146,7 +153,7 @@ func (d *EWFTableSection) Encode(ewf io.Writer, previousDescriptorPosition int64
 
 	desc.DataSize = uint64(dataN)
 	desc.PreviousOffset = uint64(previousDescriptorPosition)
-	desc.DataFlags = EWF_CHUNK_DATA_FLAG_HAS_CHECKSUM
+	desc.PaddingSize = uint32(paddingSize)
 
 	descN, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {
@@ -166,14 +173,14 @@ func (t *EWFTableSection) readData() error {
 	}
 
 	headerSection := EWFTableSectionHeader{}
-
 	err := binary.Read(t.fh, binary.LittleEndian, &headerSection)
 	if err != nil {
 		return err
 	}
 	t.Header = &headerSection
 
-	cpos, err := t.fh.Seek(0, io.SeekCurrent)
+	padSizeForHeader := calculatePadding(binary.Size(headerSection))
+	cpos, err := t.fh.Seek(int64(padSizeForHeader), io.SeekCurrent)
 	if err != nil {
 		return err
 	}
@@ -254,6 +261,9 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 
 	if entry.DataFlags&EWF_CHUNK_DATA_FLAG_IS_COMPRESSED != 0 { // COMPRESSED
 		return t.decompressorFunc(buf)
+	}
+	if len(buf) <= ChecksumSize {
+		return buf, nil
 	}
 
 	return buf[:len(buf)-ChecksumSize], nil

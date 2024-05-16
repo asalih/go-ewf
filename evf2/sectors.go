@@ -14,13 +14,12 @@ func (d *EWFSectorsSection) Decode(fh io.ReadSeeker, section *EWFSectionDescript
 	return nil
 }
 
-func (d *EWFSectorsSection) Encode(ewf io.Writer, dataSize uint64, previousDescriptorPosition int64) (dataN int, descN int, err error) {
+func (d *EWFSectorsSection) Encode(ewf io.Writer, dataSize uint64, paddingSize uint32, previousDescriptorPosition int64) (dataN int, descN int, err error) {
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_SECTOR_DATA)
 
-	desc.DataSize = dataSize
+	desc.DataSize = dataSize + uint64(paddingSize)
 	desc.PreviousOffset = uint64(previousDescriptorPosition)
-	desc.DescriptorSize = uint32(DescriptorSize)
-	desc.DataFlags = EWF_CHUNK_DATA_FLAG_HAS_CHECKSUM
+	desc.PaddingSize = paddingSize
 
 	descN, desc.Checksum, err = shared.WriteWithSum(ewf, desc)
 	if err != nil {

@@ -1,5 +1,7 @@
 package evf2
 
+import "bytes"
+
 const (
 	EVF2Signature = "EVF2\x0d\x0a\x81\x00"
 	LVF2Signature = "LVF2\x0d\x0a\x81\x00"
@@ -51,3 +53,20 @@ const (
 	EWF_COMPRESSION_METHOD_ZLIB  = 1
 	EWF_COMPRESSION_METHOD_BZIP2 = 2
 )
+
+func alignTo16Bytes(data []byte) ([]byte, int) {
+	padding := calculatePadding(len(data))
+	if padding > 0 {
+		data = append(data, bytes.Repeat([]byte{0}, padding)...)
+	}
+	return data, padding
+}
+
+func alignSizeTo16Bytes(sz int) ([]byte, int) {
+	padding := calculatePadding(sz)
+	return make([]byte, padding), padding
+}
+
+func calculatePadding(sz int) int {
+	return (16 - (sz % 16)) % 16
+}
