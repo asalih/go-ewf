@@ -33,7 +33,7 @@ type EWFReader struct {
 	First *EWFSegment
 
 	ChunkSize uint32
-	Size      int64
+	EWFSize   int64
 
 	decompressor shared.Decompressor
 	segments     *list.List
@@ -44,7 +44,7 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf := &EWFReader{
 		segments:  list.New(),
 		ChunkSize: 0,
-		Size:      0,
+		EWFSize:   0,
 	}
 
 	allSegments := make([]*EWFSegment, 0)
@@ -105,7 +105,7 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	ewf.Size = int64(uint32(cc) * ewf.ChunkSize)
+	ewf.EWFSize = int64(uint32(cc) * ewf.ChunkSize)
 
 	return ewf, nil
 }
@@ -114,6 +114,10 @@ func (ewf *EWFReader) Read(p []byte) (n int, err error) {
 	n, err = ewf.ReadAt(p, ewf.position)
 	ewf.position += int64(n)
 	return
+}
+
+func (ewf *EWFReader) Size() int64 {
+	return ewf.EWFSize
 }
 
 func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
@@ -146,7 +150,7 @@ func (ewf *EWFReader) Seek(offset int64, whence int) (ret int64, err error) {
 	case io.SeekCurrent:
 		newPos = ewf.position + offset
 	case io.SeekEnd:
-		newPos = ewf.Size + offset
+		newPos = ewf.EWFSize + offset
 	default:
 		return 0, errors.New("invalid whence value")
 	}
