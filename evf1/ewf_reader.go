@@ -10,6 +10,8 @@ import (
 	"github.com/asalih/go-ewf/shared"
 )
 
+var _ shared.EWFReader = &EWFReader{}
+
 type MediaType uint8
 
 const (
@@ -89,6 +91,18 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf.EWFSize = int64(ewf.First.Volume.Data.GetChunkCount() * ewf.ChunkSize)
 
 	return ewf, nil
+}
+
+func (ewf *EWFReader) Metadata() map[string]interface{} {
+	md := make(map[string]interface{})
+	for k, v := range ewf.First.Header.MediaInfo {
+		if identifier, ok := AcquiredMediaIdentifiers[EWFMediaInfo(k)]; ok {
+			md[identifier] = v
+		} else {
+			md[k] = v
+		}
+	}
+	return md
 }
 
 func (ewf *EWFReader) Read(p []byte) (n int, err error) {

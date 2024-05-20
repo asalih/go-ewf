@@ -10,24 +10,7 @@ import (
 	"github.com/asalih/go-ewf/shared"
 )
 
-type MediaType uint8
-
-const (
-	Removable MediaType = 0x00
-	Fixed     MediaType = 0x01
-	Optical   MediaType = 0x03
-	Logical   MediaType = 0x0e
-	RAM       MediaType = 0x10
-)
-
-type MediaFlags uint8
-
-const (
-	Image    MediaFlags = 0x01
-	Physical MediaFlags = 0x02
-	Fastbloc MediaFlags = 0x04
-	Tablaeu  MediaFlags = 0x08
-)
+var _ shared.EWFReader = &EWFReader{}
 
 type EWFReader struct {
 	First *EWFSegment
@@ -108,6 +91,29 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	ewf.EWFSize = int64(uint32(cc) * ewf.ChunkSize)
 
 	return ewf, nil
+}
+
+func (ewf *EWFReader) Metadata() map[string]interface{} {
+	cd := make(map[string]string)
+	for k, v := range ewf.First.CaseData.KeyValue {
+		if identifier, ok := CaseDataIdentifiers[EWFCaseDataInformationKey(k)]; ok {
+			cd[identifier] = v
+		} else {
+			cd[k] = v
+		}
+	}
+	di := make(map[string]string)
+	for k, v := range ewf.First.CaseData.KeyValue {
+		if identifier, ok := DeviceInformationIdentifiers[EWFDeviceInformationKey(k)]; ok {
+			di[identifier] = v
+		} else {
+			di[k] = v
+		}
+	}
+
+	return map[string]interface{}{
+		"Device Information": di,
+	}
 }
 
 func (ewf *EWFReader) Read(p []byte) (n int, err error) {

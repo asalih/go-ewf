@@ -14,6 +14,8 @@ import (
 	"github.com/asalih/go-ewf/shared"
 )
 
+var _ shared.EWFWriter = &EWFWriter{}
+
 type writer struct {
 	position int64
 	fh       io.Writer

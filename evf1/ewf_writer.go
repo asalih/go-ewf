@@ -10,6 +10,8 @@ import (
 	"github.com/asalih/go-ewf/shared"
 )
 
+var _ shared.EWFWriter = &EWFWriter{}
+
 // EWFWriter is helper for creating E01 images. Data is always compressed
 type EWFWriter struct {
 	mu   sync.Mutex
