@@ -28,7 +28,11 @@ type EWFWriter struct {
 	ChunkSize     uint32
 }
 
-func CreateEWF(dest io.WriteSeeker) (*EWFWriter, error) {
+type EWFCreator struct {
+	ewfWriter *EWFWriter
+}
+
+func CreateEWF(dest io.WriteSeeker) (*EWFCreator, error) {
 	ewf := &EWFWriter{
 		dest:          dest,
 		buf:           make([]byte, 0, DefaultChunkSize),
@@ -76,32 +80,37 @@ func CreateEWF(dest io.WriteSeeker) (*EWFWriter, error) {
 	ewf.md5Hasher = md5.New()
 	ewf.sha1Hasher = sha1.New()
 
-	return ewf, nil
+	return &EWFCreator{ewf}, nil
 }
 
-func (ewf *EWFWriter) AddMediaInfo(key EWFMediaInfo, value string) {
-	ewf.Segment.Header.MediaInfo[string(key)] = value
+func (creator *EWFCreator) AddMediaInfo(key EWFMediaInfo, value string) {
+	creator.ewfWriter.Segment.Header.MediaInfo[string(key)] = value
 }
 
-func (ewf *EWFWriter) Start() error {
-	err := ewf.Segment.EWFHeader.Encode(ewf.dest)
+func (creator *EWFCreator) Start() (*EWFWriter, error) {
+	err := creator.ewfWriter.Segment.EWFHeader.Encode(creator.ewfWriter.dest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = ewf.Segment.Header.Encode(ewf.dest)
+	err = creator.ewfWriter.Segment.Header.Encode(creator.ewfWriter.dest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Volume comes before data we put so default volume used as placeholder
-	err = ewf.Segment.Volume.Encode(ewf.dest)
+	err = creator.ewfWriter.Segment.Volume.Encode(creator.ewfWriter.dest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// sectors descriptor also comes before the data
-	return ewf.Segment.Sectors.Encode(ewf.dest, 0, 0)
+	err = creator.ewfWriter.Segment.Sectors.Encode(creator.ewfWriter.dest, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return creator.ewfWriter, nil
 }
 
 func (ewf *EWFWriter) Write(p []byte) (n int, err error) {

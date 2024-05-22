@@ -76,17 +76,17 @@ func handleV2(sourcePath string, sourceOffset int, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	err = ewfc.Start(sz)
+	ewfWriter, err := ewfc.Start(sz)
 	if err != nil {
 		return err
 	}
 
-	_, err = io.CopyBuffer(ewfc, sourceReader, make([]byte, 1024*1024))
+	_, err = io.CopyBuffer(ewfWriter, sourceReader, make([]byte, 1024*1024))
 	if err != nil {
 		return err
 	}
 
-	err = ewfc.Close()
+	err = ewfWriter.Close()
 	if err != nil {
 		return err
 	}
@@ -109,17 +109,17 @@ func handleV1(sourcePath string, sourceOffset int, targetPath string) error {
 		return err
 	}
 
-	err = ewfc.Start()
+	writer, err := ewfc.Start()
 	if err != nil {
 		return err
 	}
 
-	_, err = io.CopyBuffer(ewfc, sourceReader, make([]byte, 1024*1024))
+	_, err = io.CopyBuffer(writer, sourceReader, make([]byte, 1024*1024))
 	if err != nil {
 		return err
 	}
 
-	err = ewfc.Close()
+	err = writer.Close()
 	if err != nil {
 		return err
 	}

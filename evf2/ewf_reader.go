@@ -103,7 +103,7 @@ func (ewf *EWFReader) Metadata() map[string]interface{} {
 		}
 	}
 	di := make(map[string]string)
-	for k, v := range ewf.First.CaseData.KeyValue {
+	for k, v := range ewf.First.DeviceInformation.KeyValue {
 		if identifier, ok := DeviceInformationIdentifiers[EWFDeviceInformationKey(k)]; ok {
 			di[identifier] = v
 		} else {
@@ -113,6 +113,7 @@ func (ewf *EWFReader) Metadata() map[string]interface{} {
 
 	return map[string]interface{}{
 		"Device Information": di,
+		"Case Data":          cd,
 	}
 }
 

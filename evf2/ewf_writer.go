@@ -46,7 +46,11 @@ type EWFWriter struct {
 	ChunkSize     uint32
 }
 
-func CreateEWF(dest io.Writer) (*EWFWriter, error) {
+type EWFCreator struct {
+	ewfWriter *EWFWriter
+}
+
+func CreateEWF(dest io.Writer) (*EWFCreator, error) {
 	ewf := &EWFWriter{
 		dest:          &writer{fh: dest},
 		buf:           make([]byte, 0, DefaultChunkSize),
@@ -70,39 +74,36 @@ func CreateEWF(dest io.Writer) (*EWFWriter, error) {
 	ewf.Segment.CaseData = &EWFCaseDataSection{}
 	ewf.Segment.CaseData.NumberOfObjects = "1"
 	ewf.Segment.CaseData.ObjectName = "main"
-	ewf.Segment.CaseData.KeyValue = make(map[string]string)
-
 	ts := strconv.FormatInt(time.Now().UTC().Unix(), 10)
-	ewf.AddCaseData(EWF_CASE_DATA_CASE_NUMBER, "")
-	ewf.AddCaseData(EWF_CASE_DATA_EXAMINER_NAME, "")
-	ewf.AddCaseData(EWF_CASE_DATA_NOTES, "")
-	ewf.AddCaseData(EWF_CASE_DATA_ACTUAL_TIME, ts)
-	ewf.AddCaseData(EWF_CASE_DATA_EVIDENCE_NUMBER, "")
-	ewf.AddCaseData(EWF_CASE_DATA_OS, runtime.GOOS)
-	ewf.AddCaseData(EWF_CASE_DATA_NAME, "")
-	ewf.AddCaseData(EWF_CASE_DATA_WRITE_BLOCKER_TYPE, "")
-	ewf.AddCaseData(EWF_CASE_DATA_TARGET_TIME, ts)
-	ewf.AddCaseData(EWF_CASE_DATA_COMPRESSION_METHOD, "1") //LZ
-	ewf.AddCaseData(EWF_CASE_DATA_ERROR_GRANULARITY, "")
+	ewf.Segment.CaseData.KeyValue = map[string]string{
+		string(EWF_CASE_DATA_CASE_NUMBER):        "",
+		string(EWF_CASE_DATA_EXAMINER_NAME):      "",
+		string(EWF_CASE_DATA_NOTES):              "",
+		string(EWF_CASE_DATA_ACTUAL_TIME):        ts,
+		string(EWF_CASE_DATA_EVIDENCE_NUMBER):    "",
+		string(EWF_CASE_DATA_OS):                 runtime.GOOS,
+		string(EWF_CASE_DATA_NAME):               "",
+		string(EWF_CASE_DATA_WRITE_BLOCKER_TYPE): "",
+		string(EWF_CASE_DATA_TARGET_TIME):        ts,
+		string(EWF_CASE_DATA_COMPRESSION_METHOD): "1", //LZ
+		string(EWF_CASE_DATA_ERROR_GRANULARITY):  "",
+	}
 
 	ewf.Segment.DeviceInformation = &EWFDeviceInformationSection{}
 	ewf.Segment.DeviceInformation.NumberOfObjects = "1"
 	ewf.Segment.DeviceInformation.ObjectName = "main"
-	ewf.Segment.DeviceInformation.KeyValue = make(map[string]string)
-
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_DRIVE_MODEL, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_NUMBER_OF_DCO, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_PROCESS_ID, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_NUMBER_OF_SMART_LOGS, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_SERIAL_NUMBER, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_DRIVE_LABEL, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_NUMBER_OF_HPA, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_DRIVE_TYPE, "f")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_MUMBER_OF_PALM, "")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_IS_PHYSICAL, "1")
+	ewf.Segment.DeviceInformation.KeyValue = map[string]string{
+		string(EWF_DEVICE_INFO_DRIVE_MODEL):          "",
+		string(EWF_DEVICE_INFO_NUMBER_OF_SMART_LOGS): "",
+		string(EWF_DEVICE_INFO_SERIAL_NUMBER):        "",
+		string(EWF_DEVICE_INFO_DRIVE_LABEL):          "",
+		string(EWF_DEVICE_INFO_NUMBER_OF_HPA):        "",
+		string(EWF_DEVICE_INFO_DRIVE_TYPE):           "f",
+		string(EWF_DEVICE_INFO_MUMBER_OF_PALM):       "",
+		string(EWF_DEVICE_INFO_IS_PHYSICAL):          "1",
+	}
 
 	ewf.Segment.Sectors = new(EWFSectorsSection)
-
 	ewf.Segment.Tables = []*EWFTableSection{
 		newTable(),
 	}
@@ -115,27 +116,27 @@ func CreateEWF(dest io.Writer) (*EWFWriter, error) {
 	ewf.md5Hasher = md5.New()
 	ewf.sha1Hasher = sha1.New()
 
-	return ewf, nil
+	return &EWFCreator{ewfWriter: ewf}, nil
 }
 
-func (ewf *EWFWriter) AddCaseData(key EWFCaseDataInformationKey, value string) {
-	ewf.Segment.CaseData.KeyValue[string(key)] = value
+func (creator *EWFCreator) AddCaseData(key EWFCaseDataInformationKey, value string) {
+	creator.ewfWriter.Segment.CaseData.KeyValue[string(key)] = value
 }
 
-func (ewf *EWFWriter) AddDeviceInformation(key EWFDeviceInformationKey, value string) {
-	ewf.Segment.DeviceInformation.KeyValue[string(key)] = value
+func (creator *EWFCreator) AddDeviceInformation(key EWFDeviceInformationKey, value string) {
+	creator.ewfWriter.Segment.DeviceInformation.KeyValue[string(key)] = value
 }
 
-func (ewf *EWFWriter) Start(totalSize int64) error {
-	err := ewf.Segment.EWFHeader.Encode(ewf.dest)
+func (creator *EWFCreator) Start(totalSize int64) (*EWFWriter, error) {
+	err := creator.ewfWriter.Segment.EWFHeader.Encode(creator.ewfWriter.dest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	headerPad, _ := alignSizeTo16Bytes(binary.Size(ewf.Segment.EWFHeader))
-	_, err = ewf.dest.Write(headerPad)
+	headerPad, _ := alignSizeTo16Bytes(binary.Size(creator.ewfWriter.Segment.EWFHeader))
+	_, err = creator.ewfWriter.dest.Write(headerPad)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	numChunks := totalSize / DefaultChunkSize
@@ -143,25 +144,25 @@ func (ewf *EWFWriter) Start(totalSize int64) error {
 		numChunks++
 	}
 
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_BYTES_PER_SEC, "512")
-	ewf.AddDeviceInformation(EWF_DEVICE_INFO_NUMBER_OF_SECTORS, strconv.FormatInt(numChunks*64, 10))
-	_, descN, err := ewf.Segment.DeviceInformation.Encode(ewf.dest, 0)
+	creator.AddDeviceInformation(EWF_DEVICE_INFO_BYTES_PER_SEC, "512")
+	creator.AddDeviceInformation(EWF_DEVICE_INFO_NUMBER_OF_SECTORS, strconv.FormatInt(numChunks*64, 10))
+	_, descN, err := creator.ewfWriter.Segment.DeviceInformation.Encode(creator.ewfWriter.dest, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	ewf.previousDescriptorPosition = ewf.dest.position - int64(descN)
+	creator.ewfWriter.previousDescriptorPosition = creator.ewfWriter.dest.position - int64(descN)
 
-	ewf.AddCaseData(EWF_CASE_DATA_NUMBER_OF_CHUNKS, strconv.FormatInt(numChunks, 10))
-	ewf.AddCaseData(EWF_CASE_DATA_NUMBER_OF_SECTORS_PC, "64")
-	ewf.AddCaseData(EWF_CASE_DATA_ERROR_GRANULARITY, "64")
-	_, descN, err = ewf.Segment.CaseData.Encode(ewf.dest, ewf.previousDescriptorPosition)
+	creator.AddCaseData(EWF_CASE_DATA_NUMBER_OF_CHUNKS, strconv.FormatInt(numChunks, 10))
+	creator.AddCaseData(EWF_CASE_DATA_NUMBER_OF_SECTORS_PC, "64")
+	creator.AddCaseData(EWF_CASE_DATA_ERROR_GRANULARITY, "64")
+	_, descN, err = creator.ewfWriter.Segment.CaseData.Encode(creator.ewfWriter.dest, creator.ewfWriter.previousDescriptorPosition)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ewf.previousDescriptorPosition = ewf.dest.position - int64(descN)
+	creator.ewfWriter.previousDescriptorPosition = creator.ewfWriter.dest.position - int64(descN)
 
-	return nil
+	return creator.ewfWriter, nil
 }
 
 func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
