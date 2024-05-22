@@ -23,11 +23,8 @@ func DecompressZlib(val []byte) ([]byte, error) {
 	b := bytes.NewReader(val)
 
 	zr, err := zlib.NewReader(b)
-	if err != nil {
-		if err != io.EOF {
-			return nil, err
-		}
-		err = nil
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
 	defer zr.Close()
 
