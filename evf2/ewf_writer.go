@@ -35,6 +35,7 @@ type EWFWriter struct {
 	dataPadSize int
 	dataSize    uint64
 	buf         []byte
+	compressor  *shared.ZlibCompressor
 
 	previousDescriptorPosition int64
 
@@ -58,7 +59,12 @@ func CreateEWF(dest io.Writer) (*EWFCreator, error) {
 		ChunkSize:     0,
 	}
 
-	var err error
+	compressor, err := shared.NewZlibCompressor()
+	if err != nil {
+		return nil, err
+	}
+	ewf.compressor = compressor
+
 	ewf.Segment, err = NewEWFSegment(nil)
 	if err != nil {
 		return nil, err
@@ -245,7 +251,7 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 	}
 
 	var bufc []byte
-	bufc, err = shared.CompressZlib(p)
+	bufc, err = ewf.compressor.Compress(p)
 	if err != nil {
 		return
 	}

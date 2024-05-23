@@ -131,7 +131,11 @@ func (ewfHeader *EWFHeaderSection) Encode(ewf io.WriteSeeker) error {
 	buf.WriteString(strings.Join(mv, string(fieldDelim)))
 	buf.Write(newLineDelim)
 
-	zlHeader, err := shared.CompressZlib(buf.Bytes())
+	comp, err := shared.NewZlibCompressor()
+	if err != nil {
+		return err
+	}
+	zlHeader, err := comp.Compress(buf.Bytes())
 	if err != nil {
 		return err
 	}

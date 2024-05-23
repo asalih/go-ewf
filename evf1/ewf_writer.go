@@ -17,8 +17,9 @@ type EWFWriter struct {
 	mu   sync.Mutex
 	dest io.WriteSeeker
 
-	dataSize uint64
-	buf      []byte
+	dataSize   uint64
+	buf        []byte
+	compressor *shared.ZlibCompressor
 
 	md5Hasher  hash.Hash
 	sha1Hasher hash.Hash
@@ -40,7 +41,12 @@ func CreateEWF(dest io.WriteSeeker) (*EWFCreator, error) {
 		ChunkSize:     0,
 	}
 
-	var err error
+	compressor, err := shared.NewZlibCompressor()
+	if err != nil {
+		return nil, err
+	}
+	ewf.compressor = compressor
+
 	ewf.Segment, err = NewEWFSegment(nil)
 	if err != nil {
 		return nil, err
@@ -213,7 +219,7 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 		return 0, err
 	}
 	var bufc []byte
-	bufc, err = shared.CompressZlib(p)
+	bufc, err = ewf.compressor.Compress(p)
 	if err != nil {
 		return
 	}

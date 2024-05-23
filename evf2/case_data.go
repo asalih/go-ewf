@@ -118,7 +118,11 @@ func (ewfHeader *EWFCaseDataSection) Encode(ewf io.Writer, previousDescriptorPos
 	buf.Write(newLineDelim)
 
 	utf16Data := shared.UTF8ToUTF16(buf.Bytes())
-	zlHeader, err := shared.CompressZlib(utf16Data)
+	comp, err := shared.NewZlibCompressor()
+	if err != nil {
+		return 0, 0, err
+	}
+	zlHeader, err := comp.Compress(utf16Data)
 	if err != nil {
 		return 0, 0, err
 	}
