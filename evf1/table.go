@@ -222,7 +222,7 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	chunkOffset := uint32(t.BaseOffset) + (chunkEntry & 0x7FFFFFFF)
+	chunkOffset := t.BaseOffset + int64(chunkEntry&0x7FFFFFFF)
 	compressed := chunkEntry>>31 == 1
 
 	var chunkSize int64
@@ -263,13 +263,13 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 }
 
 // Helper function to calculate the size of the last chunk
-func (t *EWFTableSection) calculateLastChunkSize(chunkOffset uint32) int64 {
-	if chunkOffset < uint32(t.Section.offset) {
-		return t.Section.offset - int64(chunkOffset)
+func (t *EWFTableSection) calculateLastChunkSize(chunkOffset int64) int64 {
+	if chunkOffset < t.Section.offset {
+		return t.Section.offset - chunkOffset
 	}
 
-	if int64(chunkOffset) < t.Section.offset+int64(t.Section.Size) {
-		return t.Section.offset + int64(t.Section.Size) - int64(chunkOffset)
+	if chunkOffset < t.Section.offset+int64(t.Section.Size) {
+		return t.Section.offset + int64(t.Section.Size) - chunkOffset
 	}
 
 	return -1
