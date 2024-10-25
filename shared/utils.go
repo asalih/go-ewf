@@ -91,3 +91,17 @@ func PadBytes(buf []byte, targetLen int) []byte {
 	padding := make([]byte, targetLen-currentLength)
 	return append(buf, padding...)
 }
+
+func MinUint32(a, b uint32) uint32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func MinInt64(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}

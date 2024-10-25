@@ -290,7 +290,7 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, er
 
 	for count > 0 {
 		tableSectorOffset := tableSector % uint64(chunkSectorCount)
-		chunkRemainingSectors := chunkSectorCount - uint32(tableSectorOffset)
+		chunkRemainingSectors := uint64(chunkSectorCount) - tableSectorOffset
 		tableSectors := uint64(math.Min(float64(chunkRemainingSectors), float64(count)))
 
 		chunkPos := tableSectorOffset * uint64(sectorSize)

@@ -38,9 +38,9 @@ type EWFSegment struct {
 
 	fh           io.ReadSeeker
 	isDecoded    bool
-	chunkCount   int
-	sectorCount  int
-	sectorOffset int
+	chunkCount   int64
+	sectorCount  int64
+	sectorOffset int64
 	tableOffsets []int64
 }
 
@@ -170,10 +170,10 @@ func (seg *EWFSegment) Decode(link *EWFSegment) error {
 	}
 
 	for _, t := range seg.Tables {
-		seg.chunkCount += int(t.Header.NumEntries)
+		seg.chunkCount += int64(t.Header.NumEntries)
 	}
 
-	seg.sectorCount = seg.chunkCount * int(seg.Volume.Data.GetSectorCount())
+	seg.sectorCount = seg.chunkCount * int64(seg.Volume.Data.GetSectorCount())
 	if link != nil {
 		seg.sectorOffset = link.sectorOffset + link.sectorCount
 	}

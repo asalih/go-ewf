@@ -3,8 +3,10 @@ package evf1
 import (
 	"crypto/md5"
 	"crypto/sha1"
+	"fmt"
 	"hash"
 	"io"
+	"math"
 	"sync"
 
 	"github.com/asalih/go-ewf/shared"
@@ -230,6 +232,10 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 		return
 	}
 
+	if position > math.MaxUint32 {
+		err = fmt.Errorf("Position owerflow for table: %v", position)
+		return
+	}
 	ewf.Segment.addTableEntry(uint32(position))
 	ewf.Segment.Volume.Data.IncrementChunkCount()
 

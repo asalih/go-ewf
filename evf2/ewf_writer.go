@@ -256,7 +256,14 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 		return
 	}
 
-	cpos := uint32(ewf.dest.position)
+	// compression has bigger output
+	flag := EWF_CHUNK_DATA_FLAG_IS_COMPRESSED
+	if len(bufc) > len(p) {
+		bufc = p
+		flag = 0
+	}
+
+	cpos := ewf.dest.position
 	n, err = ewf.dest.Write(bufc)
 	ewf.dataSize += uint64(n)
 	if err != nil {
@@ -270,7 +277,7 @@ func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
 	}
 	ewf.dataPadSize += padSize
 
-	ewf.Segment.addTableEntry(cpos, uint32(len(bufc)))
+	ewf.Segment.addTableEntry(cpos, uint32(len(bufc)), uint32(flag))
 
 	_, err = ewf.md5Hasher.Write(p)
 	if err != nil {

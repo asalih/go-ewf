@@ -76,5 +76,4 @@ func (c *ZlibCompressor) Compress(val []byte) ([]byte, error) {
 
 	// Get the compressed data
 	return c.buf.Bytes(), nil
-
 }

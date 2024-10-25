@@ -42,9 +42,9 @@ type EWFSegment struct {
 
 	fh           io.ReadSeeker
 	isDecoded    bool
-	chunkCount   int
-	sectorCount  int
-	sectorOffset int
+	chunkCount   int64
+	sectorCount  int64
+	sectorOffset int64
 	tableOffsets []int64
 }
 
@@ -178,14 +178,14 @@ func (seg *EWFSegment) Decode(link *EWFSegment, decompressorFunc shared.Decompre
 	}
 
 	for _, t := range seg.Tables {
-		seg.chunkCount += int(t.Header.NumEntries)
+		seg.chunkCount += int64(t.Header.NumEntries)
 	}
 
 	sc, err := seg.CaseData.GetSectorCount()
 	if err != nil {
 		return err
 	}
-	seg.sectorCount = seg.chunkCount * sc
+	seg.sectorCount = seg.chunkCount * int64(sc)
 	if link != nil {
 		seg.sectorOffset = link.sectorOffset + link.sectorCount
 	}
@@ -223,7 +223,8 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	return buf, nil
 }
 
-func (seg *EWFSegment) addTableEntry(offset uint32, size uint32) {
+// IMPORTANT
+func (seg *EWFSegment) addTableEntry(offset int64, size uint32, flag uint32) {
 	t := seg.Tables[len(seg.Tables)-1]
 
 	t.Header.NumEntries++
@@ -231,7 +232,7 @@ func (seg *EWFSegment) addTableEntry(offset uint32, size uint32) {
 	e := EWFTableSectionEntry{
 		DataOffset: uint64(offset),
 		Size:       size,
-		DataFlags:  EWF_CHUNK_DATA_FLAG_IS_COMPRESSED,
+		DataFlags:  flag,
 	}
 	t.Entries.Data = append(t.Entries.Data, e)
 }

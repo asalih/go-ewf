@@ -82,7 +82,7 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 		return nil, err
 	}
 
-	ewf.ChunkSize = uint32(sc * ss)
+	ewf.ChunkSize = uint32(sc) * uint32(ss)
 
 	cc, err := ewf.First.CaseData.GetChunkCount()
 	if err != nil {
@@ -136,13 +136,13 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 	length := len(p)
 	sectorCount := (length + sectorSize - 1) / sectorSize
 
-	buf, err := ewf.readSectors(uint32(sectorOffset), uint32(sectorCount))
+	buf, err := ewf.readSectors(sectorOffset, int64(sectorCount))
 	if err != nil {
 		return 0, err
 	}
 
 	bufOff := off % int64(sectorSize)
-	copyLength := min(uint32(len(buf)-int(bufOff)), uint32(length))
+	copyLength := shared.MinUint32(uint32(len(buf)-int(bufOff)), uint32(length))
 	n = copy(p, buf[bufOff:bufOff+int64(copyLength)])
 	return
 }
@@ -190,13 +190,13 @@ func (ewf *EWFReader) Segment(index int) (*EWFSegment, *list.Element, error) {
 	return seg, elem, nil
 }
 
-func (ewf *EWFReader) calculateIndex(sector uint32) (int, error) {
+func (ewf *EWFReader) calculateIndex(sector int64) (int, error) {
 	for i := 0; i < ewf.segments.Len(); i++ {
 		seg, _, err := ewf.Segment(i)
 		if err != nil {
 			return 0, err
 		}
-		if int(sector) > seg.sectorOffset+seg.sectorCount {
+		if sector > seg.sectorOffset+seg.sectorCount {
 			continue
 		}
 		return i, nil
@@ -204,7 +204,7 @@ func (ewf *EWFReader) calculateIndex(sector uint32) (int, error) {
 	return 0, fmt.Errorf("sector too long: %v", sector)
 }
 
-func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
+func (ewf *EWFReader) readSectors(sector int64, count int64) ([]byte, error) {
 	buf := make([]byte, 0)
 
 	segmentIdx, err := ewf.calculateIndex(sector)
@@ -220,8 +220,8 @@ func (ewf *EWFReader) readSectors(sector uint32, count uint32) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		segmentRemainingSectors := uint32(segment.sectorCount) - (sector - uint32(segment.sectorOffset))
-		segmentSectors := min(segmentRemainingSectors, count)
+		segmentRemainingSectors := segment.sectorCount - (sector - segment.sectorOffset)
+		segmentSectors := shared.MinInt64(segmentRemainingSectors, count)
 		if segmentSectors <= 0 {
 			return buf, io.EOF
 		}
