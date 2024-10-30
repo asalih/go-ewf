@@ -88,7 +88,7 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	}
 
 	ewf.ChunkSize = ewf.First.Volume.Data.GetSectorCount() * ewf.First.Volume.Data.GetSectorSize()
-	ewf.EWFSize = int64(ewf.First.Volume.Data.GetChunkCount() * ewf.ChunkSize)
+	ewf.EWFSize = int64(ewf.First.Volume.Data.GetChunkCount()) * int64(ewf.ChunkSize)
 
 	return ewf, nil
 }

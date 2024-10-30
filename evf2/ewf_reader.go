@@ -88,7 +88,7 @@ func OpenEWF(fhs ...io.ReadSeeker) (*EWFReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	ewf.EWFSize = int64(uint32(cc) * ewf.ChunkSize)
+	ewf.EWFSize = int64(cc) * int64(ewf.ChunkSize)
 
 	return ewf, nil
 }
