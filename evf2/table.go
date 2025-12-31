@@ -262,11 +262,15 @@ func (t *EWFTableSection) readChunk(chunk int64) ([]byte, error) {
 	if entry.DataFlags&EWF_CHUNK_DATA_FLAG_IS_COMPRESSED != 0 { // COMPRESSED
 		return t.decompressorFunc(buf)
 	}
-	if len(buf) <= ChecksumSize {
-		return buf, nil
+
+	if entry.DataFlags&EWF_CHUNK_DATA_FLAG_HAS_CHECKSUM != 0 { // CHECKSUM
+		if len(buf) <= ChecksumSize {
+			return buf, nil
+		}
+		return buf[:len(buf)-ChecksumSize], nil
 	}
 
-	return buf[:len(buf)-ChecksumSize], nil
+	return buf, nil
 }
 
 func unpackFrom64BitPatternFill(p []byte, chunkSize int) ([]byte, error) {
@@ -282,7 +286,6 @@ func unpackFrom64BitPatternFill(p []byte, chunkSize int) ([]byte, error) {
 
 	return result, nil
 }
-
 func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, error) {
 	if count == 0 {
 		return nil, nil // Early return if there are no sectors to read
@@ -309,20 +312,31 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, er
 		tableSectors := uint64(math.Min(float64(chunkRemainingSectors), float64(count)))
 
 		chunkPos := tableSectorOffset * uint64(sectorSize)
-		chunkEnd := chunkPos + (tableSectors * uint64(sectorSize))
 
-		buf, err := ets.readChunk(int64(tableChunk))
+		// Convert table-relative chunk to entry array index by accounting for FirstChunkNumber
+		entryIndex := int64(tableChunk) - int64(ets.Header.FirstChunkNumber)
+
+		buf, err := ets.readChunk(entryIndex)
 		if err != nil {
 			return buf, err
 		}
+
+		// Calculate chunkEnd based on actual buffer size
+		chunkEnd := chunkPos + (tableSectors * uint64(sectorSize))
+		if chunkEnd > uint64(len(buf)) {
+			chunkEnd = uint64(len(buf))
+		}
+
 		if chunkPos != 0 || tableSectors != uint64(chunkSectorCount) {
 			buf = buf[chunkPos:chunkEnd]
 		}
+
 		allBuf = append(allBuf, buf...)
 
 		count -= tableSectors
 		tableSector += tableSectors
-		tableChunk += 1
+		// Recalculate tableChunk from updated tableSector instead of incrementing
+		tableChunk = tableSector / uint64(chunkSectorCount)
 	}
 
 	return allBuf, nil

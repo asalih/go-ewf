@@ -207,7 +207,12 @@ func (ewf *EWFWriter) Close() error {
 		ewf.mu.Unlock()
 	}
 
-	_, descN, err := ewf.Segment.Sectors.Encode(ewf.dest, ewf.dataSize, uint32(ewf.dataPadSize), ewf.previousDescriptorPosition)
+	_, descN, err := ewf.Segment.Sectors.Encode(
+		ewf.dest,
+		ewf.dataSize,
+		uint32(ewf.dataPadSize),
+		ewf.previousDescriptorPosition,
+	)
 	if err != nil {
 		return err
 	}

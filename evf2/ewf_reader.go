@@ -134,16 +134,20 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	sectorOffset := off / int64(sectorSize)
 	length := len(p)
-	sectorCount := (length + sectorSize - 1) / sectorSize
+
+	// Calculate how many sectors we need, accounting for starting mid-sector
+	startSectorOffset := off % int64(sectorSize)
+	sectorCount := int((startSectorOffset + int64(length) + int64(sectorSize) - 1) / int64(sectorSize))
 
 	buf, err := ewf.readSectors(sectorOffset, int64(sectorCount))
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return 0, err
 	}
 
 	bufOff := off % int64(sectorSize)
 	copyLength := shared.MinUint32(uint32(len(buf)-int(bufOff)), uint32(length))
 	n = copy(p, buf[bufOff:bufOff+int64(copyLength)])
+
 	return
 }
 

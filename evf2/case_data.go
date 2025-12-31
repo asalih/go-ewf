@@ -51,6 +51,10 @@ type EWFCaseDataSection struct {
 	NumberOfObjects string
 	ObjectName      string
 	KeyValue        map[string]string
+
+	// Cached parsed values for hot path performance
+	cachedSectorCount int
+	cachedChunkCount  int
 }
 
 func (ewfHeader *EWFCaseDataSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, decompressorFunc shared.Decompressor) error {
@@ -92,6 +96,18 @@ func (ewfHeader *EWFCaseDataSection) Decode(fh io.ReadSeeker, section *EWFSectio
 		}
 	}
 	ewfHeader.KeyValue = shared.ToMap(identifiers, values)
+
+	// Pre-parse and cache values for hot path performance
+	if sb, ok := ewfHeader.KeyValue[string(EWF_CASE_DATA_NUMBER_OF_SECTORS_PC)]; ok {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(sb)); err == nil {
+			ewfHeader.cachedSectorCount = parsed
+		}
+	}
+	if tb, ok := ewfHeader.KeyValue[string(EWF_CASE_DATA_NUMBER_OF_CHUNKS)]; ok {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(tb)); err == nil {
+			ewfHeader.cachedChunkCount = parsed
+		}
+	}
 
 	return nil
 }
@@ -151,6 +167,9 @@ func (ewfHeader *EWFCaseDataSection) Encode(ewf io.Writer, previousDescriptorPos
 }
 
 func (c *EWFCaseDataSection) GetSectorCount() (int, error) {
+	if c.cachedSectorCount > 0 {
+		return c.cachedSectorCount, nil
+	}
 	sb, ok := c.KeyValue[string(EWF_CASE_DATA_NUMBER_OF_SECTORS_PC)]
 	if !ok {
 		return 0, errors.New("case data has no sector count")
@@ -159,6 +178,9 @@ func (c *EWFCaseDataSection) GetSectorCount() (int, error) {
 }
 
 func (c *EWFCaseDataSection) GetChunkCount() (int, error) {
+	if c.cachedChunkCount > 0 {
+		return c.cachedChunkCount, nil
+	}
 	tb, ok := c.KeyValue[string(EWF_CASE_DATA_NUMBER_OF_CHUNKS)]
 	if !ok {
 		return 0, errors.New("case data has no chunk count")
