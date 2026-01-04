@@ -242,10 +242,3 @@ func (ewf *EWFReader) readSectors(sector int64, count int64) ([]byte, error) {
 
 	return buf, nil
 }
-
-func min(a, b uint32) uint32 {
-	if a < b {
-		return a
-	}
-	return b
-}

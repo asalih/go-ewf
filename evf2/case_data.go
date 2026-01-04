@@ -58,7 +58,9 @@ type EWFCaseDataSection struct {
 }
 
 func (ewfHeader *EWFCaseDataSection) Decode(fh io.ReadSeeker, section *EWFSectionDescriptor, decompressorFunc shared.Decompressor) error {
-	fh.Seek(section.DataOffset, io.SeekStart)
+	if _, err := fh.Seek(section.DataOffset, io.SeekStart); err != nil {
+		return err
+	}
 	rd := make([]byte, section.Size)
 	if _, err := fh.Read(rd); err != nil {
 		return err

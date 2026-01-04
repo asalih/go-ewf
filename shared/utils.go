@@ -39,7 +39,7 @@ func WriteWithSum(dest io.Writer, obj interface{}) (n int, sum uint32, err error
 func UTF16ToUTF8(in []byte) string {
 	buff := bytes.NewReader(in)
 	u16 := make([]uint16, len(in)/2)
-	binary.Read(buff, binary.LittleEndian, &u16)
+	_ = binary.Read(buff, binary.LittleEndian, &u16)
 	return string(utf16.Decode(u16))
 }
 func UTF8ToUTF16(utf8Bytes []byte) []byte {

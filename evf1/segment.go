@@ -166,7 +166,9 @@ func (seg *EWFSegment) Decode(link *EWFSegment) error {
 
 		// Update the offset and seek to the next section
 		offset = int64(section.Next)
-		seg.fh.Seek(offset, io.SeekStart)
+		if _, err := seg.fh.Seek(offset, io.SeekStart); err != nil {
+			return err
+		}
 	}
 
 	for _, t := range seg.Tables {

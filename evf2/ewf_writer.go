@@ -183,7 +183,7 @@ func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
 	}
 
 	for len(ewf.buf) >= DefaultChunkSize {
-		_, err = ewf.writeData(ewf.buf[:DefaultChunkSize])
+		err = ewf.writeData(ewf.buf[:DefaultChunkSize])
 		if err != nil {
 			return
 		}
@@ -198,7 +198,7 @@ func (ewf *EWFWriter) Close() error {
 	if len(ewf.buf) > 0 {
 		ewf.mu.Lock()
 		ewf.buf = shared.PadBytes(ewf.buf, DefaultChunkSize)
-		_, err := ewf.writeData(ewf.buf)
+		err := ewf.writeData(ewf.buf)
 		if err != nil {
 			ewf.mu.Unlock()
 			return err
@@ -250,45 +250,45 @@ func (ewf *EWFWriter) Close() error {
 	return nil
 }
 
-func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
+func (ewf *EWFWriter) writeData(p []byte) error {
 	if len(p) == 0 {
-		return
+		return nil
 	}
 
 	var bufc []byte
-	bufc, err = ewf.compressor.Compress(p)
+	bufc, err := ewf.compressor.Compress(p)
 	if err != nil {
-		return
+		return err
 	}
 
 	// compression has bigger output
-	flag := EWF_CHUNK_DATA_FLAG_IS_COMPRESSED
+	flag := uint32(EWF_CHUNK_DATA_FLAG_IS_COMPRESSED)
 	if len(bufc) > len(p) {
 		bufc = p
 		flag = 0
 	}
 
 	cpos := ewf.dest.position
-	n, err = ewf.dest.Write(bufc)
+	n, err := ewf.dest.Write(bufc)
 	ewf.dataSize += uint64(n)
 	if err != nil {
-		return
+		return err
 	}
 
 	alignPad, padSize := alignSizeTo16Bytes(len(bufc))
 	_, err = ewf.dest.Write(alignPad)
 	if err != nil {
-		return
+		return err
 	}
 	ewf.dataPadSize += padSize
 
-	ewf.Segment.addTableEntry(cpos, uint32(len(bufc)), uint32(flag))
+	ewf.Segment.addTableEntry(cpos, uint32(len(bufc)), flag)
 
 	_, err = ewf.md5Hasher.Write(p)
 	if err != nil {
-		return
+		return err
 	}
 
 	_, err = ewf.sha1Hasher.Write(p)
-	return
+	return err
 }

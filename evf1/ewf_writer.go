@@ -133,7 +133,7 @@ func (ewf *EWFWriter) Write(p []byte) (n int, err error) {
 	}
 
 	for len(ewf.buf) >= DefaultChunkSize {
-		_, err = ewf.writeData(ewf.buf[:DefaultChunkSize])
+		err = ewf.writeData(ewf.buf[:DefaultChunkSize])
 		if err != nil {
 			return
 		}
@@ -148,7 +148,7 @@ func (ewf *EWFWriter) Close() error {
 	if len(ewf.buf) > 0 {
 		ewf.mu.Lock()
 		ewf.buf = shared.PadBytes(ewf.buf, DefaultChunkSize)
-		_, err := ewf.writeData(ewf.buf)
+		err := ewf.writeData(ewf.buf)
 		if err != nil {
 			ewf.mu.Unlock()
 			return err
@@ -211,39 +211,38 @@ func (ewf *EWFWriter) Seek(offset int64, whence int) (ret int64, err error) {
 	return ewf.dest.Seek(offset, whence)
 }
 
-func (ewf *EWFWriter) writeData(p []byte) (n int, err error) {
+func (ewf *EWFWriter) writeData(p []byte) error {
 	if len(p) == 0 {
-		return
+		return nil
 	}
 
 	position, err := ewf.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	var bufc []byte
 	bufc, err = ewf.compressor.Compress(p)
 	if err != nil {
-		return
+		return err
 	}
 
-	n, err = ewf.dest.Write(bufc)
+	n, err := ewf.dest.Write(bufc)
 	ewf.dataSize += uint64(n)
 	if err != nil {
-		return
+		return err
 	}
 
 	if position > math.MaxUint32 {
-		err = fmt.Errorf("Position owerflow for table: %v", position)
-		return
+		return fmt.Errorf("Position owerflow for table: %v", position)
 	}
 	ewf.Segment.addTableEntry(uint32(position))
 	ewf.Segment.Volume.Data.IncrementChunkCount()
 
 	_, err = ewf.md5Hasher.Write(p)
 	if err != nil {
-		return
+		return err
 	}
 
 	_, err = ewf.sha1Hasher.Write(p)
-	return
+	return err
 }

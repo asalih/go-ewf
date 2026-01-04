@@ -27,7 +27,9 @@ func DecompressZlib(val []byte) ([]byte, error) {
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
-	defer zr.Close()
+	defer func() {
+		_ = zr.Close()
+	}()
 
 	return io.ReadAll(zr)
 }
