@@ -1,5 +1,3 @@
-version: 2
-
 run:
   timeout: 5m
   tests: true
@@ -11,12 +9,9 @@ linters:
     - errcheck
     - staticcheck
     - unused
+    - gosimple
     - ineffassign
     - unparam
-
-formatters:
-  enable:
-    - gofmt
 
 linters-settings:
   errcheck:
