@@ -1,3 +1,3 @@
 module github.com/asalih/go-ewf
 
-go 1.20
+go 1.22
