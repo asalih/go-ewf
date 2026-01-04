@@ -39,6 +39,46 @@ const (
 	EWF_SECTION_TYPE_ANALYTICAL_DATA      EWFSectionType = 16
 )
 
+// String implements the Stringer interface for EWFSectionType
+func (t EWFSectionType) String() string {
+	switch t {
+	case EWF_SECTION_TYPE_DEVICE_INFORMATION:
+		return "device_information"
+	case EWF_SECTION_TYPE_CASE_DATA:
+		return "case_data"
+	case EWF_SECTION_TYPE_SECTOR_DATA:
+		return "sector_data"
+	case EWF_SECTION_TYPE_SECTOR_TABLE:
+		return "sector_table"
+	case EWF_SECTION_TYPE_ERROR_TABLE:
+		return "error_table"
+	case EWF_SECTION_TYPE_SESSION_TABLE:
+		return "session_table"
+	case EWF_SECTION_TYPE_INCREMENET_DATA:
+		return "increment_data"
+	case EWF_SECTION_TYPE_MD5_HASH:
+		return "md5_hash"
+	case EWF_SECTION_TYPE_SHA1_HASH:
+		return "sha1_hash"
+	case EWF_SECTION_TYPE_RESTART_DATA:
+		return "restart_data"
+	case EWF_SECTION_TYPE_ENCRYPTION_KEYS:
+		return "encryption_keys"
+	case EWF_SECTION_TYPE_MEMORY_EXTENTS_TABLE:
+		return "memory_extents_table"
+	case EWF_SECTION_TYPE_NEXT:
+		return "next"
+	case EWF_SECTION_TYPE_FINAL_INFORMATION:
+		return "final_information"
+	case EWF_SECTION_TYPE_DONE:
+		return "done"
+	case EWF_SECTION_TYPE_ANALYTICAL_DATA:
+		return "analytical_data"
+	default:
+		return "unknown"
+	}
+}
+
 const (
 	// The chunk data is compressed
 	EWF_CHUNK_DATA_FLAG_IS_COMPRESSED = 0x00000001
