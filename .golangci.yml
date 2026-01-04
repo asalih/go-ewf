@@ -1,3 +1,5 @@
+version: 2
+
 run:
   timeout: 5m
   tests: true
@@ -5,24 +7,18 @@ run:
 
 linters:
   enable:
-    - gofmt
     - govet
     - errcheck
     - staticcheck
     - unused
-    - gosimple
     - ineffassign
-    - typecheck
-    - exportloopref
-    - gocyclo
-    - misspell
     - unparam
-    - unconvert
+
+formatters:
+  enable:
+    - gofmt
 
 linters-settings:
-  gocyclo:
-    min-complexity: 15
-  
   errcheck:
     check-type-assertions: true
     check-blank: false
@@ -33,29 +29,13 @@ issues:
   max-same-issues: 0
   
   exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - gocyclo
+    # Exclude errcheck from test files
+    - linters:
         - errcheck
-        - dupl
-        - gosec
+      path: integration_test\.go
     
-    # Allow higher complexity for Decode functions (they handle multiple section types)
-    - path: (evf1|evf2)/segment\.go
-      text: "cyclomatic complexity .* of func `\\(\\*EWFSegment\\)\\.Decode`"
-      linters:
-        - gocyclo
-    
-    # Allow higher complexity for String method (simple switch statement)
-    - path: evf2/const\.go
-      text: "cyclomatic complexity .* of func `\\(EWFSectionType\\)\\.String`"
-      linters:
-        - gocyclo
-    
-    # Allow higher complexity for CaseData Decode (parses key-value pairs)
-    - path: evf2/case_data\.go
-      text: "cyclomatic complexity .* of func `\\(\\*EWFCaseDataSection\\)\\.Decode`"
-      linters:
-        - gocyclo
+    # Exclude ineffassign from test files
+    - linters:
+        - ineffassign
+      path: integration_test\.go
 

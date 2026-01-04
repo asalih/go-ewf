@@ -233,7 +233,7 @@ func (ewf *EWFWriter) writeData(p []byte) error {
 	}
 
 	if position > math.MaxUint32 {
-		return fmt.Errorf("Position owerflow for table: %v", position)
+		return fmt.Errorf("position overflow for table: %v", position)
 	}
 	ewf.Segment.addTableEntry(uint32(position))
 	ewf.Segment.Volume.Data.IncrementChunkCount()

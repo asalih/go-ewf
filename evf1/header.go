@@ -94,17 +94,18 @@ func (ewfHeader *EWFHeaderSection) Decode(fh io.ReadSeeker, section *EWFSectionD
 	for lineNum, line := range bytes.Split(data, newLineDelim) {
 		for _, attr := range bytes.Split(line, fieldDelim) {
 			strAttr := string(bytes.TrimSuffix(attr, []byte{'\r'}))
-			if lineNum == 0 {
+			switch lineNum {
+			case 0:
 				ewfHeader.NofCategories = string(strAttr[0])
-			} else if lineNum == 1 {
+			case 1:
 				ewfHeader.CategoryName = strAttr
-			} else if lineNum == 2 {
+			case 2:
 				_, ok := AcquiredMediaIdentifiers[EWFMediaInfo(strAttr)]
 				if !ok {
 					return fmt.Errorf("media identifier is unknown: %s", strAttr)
 				}
 				identifiers = append(identifiers, strAttr)
-			} else if lineNum == 3 {
+			case 3:
 				values = append(values, strAttr)
 			}
 		}
