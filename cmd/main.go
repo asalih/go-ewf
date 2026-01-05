@@ -67,7 +67,11 @@ func dumpCommand() {
 	bufferSize := fs.Int("buffer", 1024*1024, "Buffer size in bytes (default: 1MB)")
 	verbose := fs.Bool("verbose", false, "Verbose output")
 
-	fs.Parse(os.Args[2:])
+	err := fs.Parse(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *source == "" || *target == "" {
 		fmt.Fprintf(os.Stderr, "Error: -source and -target are required\n\n")
@@ -102,7 +106,11 @@ func createCommand() {
 	bufferSize := fs.Int("buffer", 1024*1024, "Buffer size in bytes (default: 1MB)")
 	verbose := fs.Bool("verbose", false, "Verbose output")
 
-	fs.Parse(os.Args[2:])
+	err := fs.Parse(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *source == "" || *target == "" {
 		fmt.Fprintf(os.Stderr, "Error: -source and -target are required\n\n")
@@ -131,7 +139,11 @@ func infoCommand() {
 	fs := flag.NewFlagSet("info", flag.ExitOnError)
 	source := fs.String("source", "", "Source EWF image file (required)")
 
-	fs.Parse(os.Args[2:])
+	err := fs.Parse(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *source == "" {
 		fmt.Fprintf(os.Stderr, "Error: -source is required\n\n")
@@ -496,7 +508,8 @@ func showImageInfo(source string) error {
 	// Try EVF2 first
 	ewf2, err := evf2.OpenEWF(sourceFile)
 	if err == nil {
-		return showEVF2Info(source, ewf2)
+		showEVF2Info(source, ewf2)
+		return nil
 	}
 
 	// Try EVF1
@@ -508,10 +521,11 @@ func showImageInfo(source string) error {
 		return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
 	}
 
-	return showEVF1Info(source, ewf1)
+	showEVF1Info(source, ewf1)
+	return nil
 }
 
-func showEVF1Info(source string, reader *evf1.EWFReader) error {
+func showEVF1Info(source string, reader *evf1.EWFReader) {
 	fmt.Printf("EWF Image Information\n")
 	fmt.Printf("=====================\n\n")
 	fmt.Printf("File: %s\n", filepath.Base(source))
@@ -526,11 +540,9 @@ func showEVF1Info(source string, reader *evf1.EWFReader) error {
 			fmt.Printf("  %s: %s\n", key, strValue)
 		}
 	}
-
-	return nil
 }
 
-func showEVF2Info(source string, reader *evf2.EWFReader) error {
+func showEVF2Info(source string, reader *evf2.EWFReader) {
 	fmt.Printf("EWF Image Information\n")
 	fmt.Printf("=====================\n\n")
 	fmt.Printf("File: %s\n", filepath.Base(source))
@@ -550,6 +562,4 @@ func showEVF2Info(source string, reader *evf2.EWFReader) error {
 			}
 		}
 	}
-
-	return nil
 }
