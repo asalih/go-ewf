@@ -161,11 +161,17 @@ func (ewf *EWFReader) Segment(index int) (*EWFSegment, *list.Element, error) {
 		return nil, nil, errors.New("not found")
 	}
 
-	seg := elem.Value.(*EWFSegment)
+	seg, ok := elem.Value.(*EWFSegment)
+	if !ok {
+		return nil, nil, errors.New("invalid segment")
+	}
 	if !seg.isDecoded {
 		var prevSeg *EWFSegment
 		if pe := elem.Prev(); pe != nil {
-			prevSeg = pe.Value.(*EWFSegment)
+			prevSeg, ok = pe.Value.(*EWFSegment)
+			if !ok {
+				return nil, nil, errors.New("invalid previous segment")
+			}
 		}
 		err := seg.Decode(prevSeg)
 		if err != nil {
