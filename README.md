@@ -20,11 +20,49 @@ Golang EWF Reader/Writer implementation
 
 ## Installation
 
+### As a Library
+
 ```bash
 go get github.com/asalih/go-ewf
 ```
 
-## Usage
+### As a CLI Tool
+
+```bash
+# Clone the repository
+git clone https://github.com/asalih/go-ewf.git
+cd go-ewf
+
+# Build the CLI tool
+go build -o ewf-tool ./cmd/main.go
+
+# Or install globally
+go install ./cmd/...
+```
+
+## CLI Tool
+
+The project includes a powerful command-line tool for creating, dumping, and inspecting EWF images.
+
+```bash
+# Create an EWF image from raw data
+ewf-tool create -source disk.dd -target disk.Ex01 -format evf2 \
+  -case-number "CASE-001" -examiner "John Doe" -verbose
+
+# Extract data from EWF image
+ewf-tool dump -source evidence.E01 -target recovered.dd -verbose
+
+# Display image information and metadata
+ewf-tool info -source evidence.Ex01
+
+# Extract specific range
+ewf-tool dump -source disk.Ex01 -target partition.raw \
+  -offset 1048576 -length 104857600
+```
+
+See [CLI_USAGE.md](CLI_USAGE.md) for complete CLI documentation and examples.
+
+## Library Usage
 
 ### Reading EWF Files
 
