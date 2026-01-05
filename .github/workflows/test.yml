@@ -33,6 +33,7 @@ jobs:
       run: go mod verify
 
     - name: Run tests
+      shell: bash
       run: go test -v -race -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
@@ -63,6 +64,7 @@ jobs:
       run: go mod download
 
     - name: Run benchmarks
+      shell: bash
       run: go test -bench=. -benchtime=1s -benchmem -run=^$ ./...
 
   lint:
@@ -103,8 +105,10 @@ jobs:
         cache: true
 
     - name: Build
+      shell: bash
       run: go build -v ./...
 
     - name: Build CLI
-      run: go build -v ./cmd/...
+      shell: bash
+      run: go build -v -o ewf-tool ./cmd/main.go
 
