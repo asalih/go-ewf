@@ -165,7 +165,9 @@ func dumpImage(source, target string, offset, length int64, bufferSize int, verb
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer sourceFile.Close()
+	defer func() {
+		_ = sourceFile.Close()
+	}()
 
 	// Try to detect format and open
 	var reader io.ReadSeeker
@@ -182,7 +184,9 @@ func dumpImage(source, target string, offset, length int64, bufferSize int, verb
 		}
 	} else {
 		// Reset and try EVF1
-		sourceFile.Seek(0, io.SeekStart)
+		if _, err := sourceFile.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to seek to start: %w", err)
+		}
 		ewf1, err := evf1.OpenEWF(sourceFile)
 		if err != nil {
 			return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
@@ -217,7 +221,9 @@ func dumpImage(source, target string, offset, length int64, bufferSize int, verb
 	if err != nil {
 		return fmt.Errorf("failed to create target file: %w", err)
 	}
-	defer targetFile.Close()
+	defer func() {
+		_ = targetFile.Close()
+	}()
 
 	// Seek to offset
 	if _, err := reader.Seek(offset, io.SeekStart); err != nil {
@@ -285,7 +291,9 @@ func createImage(source, target, format string, metadata Metadata, bufferSize in
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer sourceFile.Close()
+	defer func() {
+		_ = sourceFile.Close()
+	}()
 
 	sourceInfo, err := sourceFile.Stat()
 	if err != nil {
@@ -309,7 +317,9 @@ func createImage(source, target, format string, metadata Metadata, bufferSize in
 	if err != nil {
 		return fmt.Errorf("failed to create target file: %w", err)
 	}
-	defer targetFile.Close()
+	defer func() {
+		_ = targetFile.Close()
+	}()
 
 	if verbose {
 		fmt.Printf("Output file: %s\n", target)
@@ -479,7 +489,9 @@ func showImageInfo(source string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer sourceFile.Close()
+	defer func() {
+		_ = sourceFile.Close()
+	}()
 
 	// Try EVF2 first
 	ewf2, err := evf2.OpenEWF(sourceFile)
@@ -488,7 +500,9 @@ func showImageInfo(source string) error {
 	}
 
 	// Try EVF1
-	sourceFile.Seek(0, io.SeekStart)
+	if _, err := sourceFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek to start: %w", err)
+	}
 	ewf1, err := evf1.OpenEWF(sourceFile)
 	if err != nil {
 		return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
