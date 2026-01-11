@@ -30,6 +30,8 @@ func main() {
 		createCommand()
 	case "info":
 		infoCommand()
+	case "verify":
+		verifyCommand()
 	case "version":
 		fmt.Printf("go-ewf version %s\n", version)
 	case "help", "-h", "--help":
@@ -51,6 +53,7 @@ Commands:
   dump      Extract data from an EWF image to raw format
   create    Create an EWF image from raw data
   info      Display information about an EWF image
+  verify    Verify/benchmark EWF image by reading all data
   version   Show version information
   help      Show this help message
 
@@ -157,6 +160,30 @@ func infoCommand() {
 	}
 }
 
+// verifyCommand reads and verifies an EWF image by reading all data (performance test)
+func verifyCommand() {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	source := fs.String("source", "", "Source EWF image file (required)")
+	bufferSize := fs.Int("buffer", 1024*1024, "Buffer size in bytes (default: 1MB)")
+
+	err := fs.Parse(os.Args[2:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *source == "" {
+		fmt.Fprintf(os.Stderr, "Error: -source is required\n\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	if err := verifyImage(*source, *bufferSize); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 type Metadata struct {
 	CaseNumber     string
 	EvidenceNumber string
@@ -167,26 +194,89 @@ type Metadata struct {
 	SerialNumber   string
 }
 
+// openAllSegments opens all segment files for a given base file
+// E.g., if given "image.E01", it will also open image.E02, image.E03, etc.
+// or for "image.Ex01", it will open image.Ex02, image.Ex03, etc.
+func openAllSegments(basePath string) ([]*os.File, error) {
+	files := make([]*os.File, 0)
+
+	// Open the first file
+	f, err := os.Open(basePath)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, f)
+
+	// Detect the pattern (E01, E02, ... or Ex01, Ex02, ...)
+	ext := filepath.Ext(basePath)
+	base := strings.TrimSuffix(basePath, ext)
+
+	// Determine if it's E01/Ex01 format
+	extUpper := strings.ToUpper(ext)
+	var pattern string
+	var startNum int
+
+	if strings.HasPrefix(extUpper, ".E") && len(extUpper) == 4 {
+		// E01, E02, E03 format
+		pattern = ".E%02d"
+		startNum = 2 // Start with E02 since E01 is already open
+	} else if strings.HasPrefix(extUpper, ".EX") && len(extUpper) == 5 {
+		// Ex01, Ex02, Ex03 format
+		pattern = ".Ex%02d"
+		startNum = 2
+	} else {
+		// Not a segmented format or unrecognized, just return the first file
+		return files, nil
+	}
+
+	// Try to open subsequent segments
+	for i := startNum; i < 100; i++ { // Reasonable limit of 100 segments
+		segmentExt := fmt.Sprintf(pattern, i)
+		segmentPath := base + segmentExt
+
+		f, err := os.Open(segmentPath)
+		if err != nil {
+			// No more segments
+			break
+		}
+		files = append(files, f)
+	}
+
+	return files, nil
+}
+
 func dumpImage(source, target string, offset, length int64, bufferSize int, verbose bool) error {
 	if verbose {
 		fmt.Printf("Opening EWF image: %s\n", source)
 	}
 
-	// Open source file
-	sourceFile, err := os.Open(source)
+	// Open all segment files
+	segmentFiles, err := openAllSegments(source)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+		return fmt.Errorf("failed to open segment files: %w", err)
 	}
 	defer func() {
-		_ = sourceFile.Close()
+		for _, f := range segmentFiles {
+			_ = f.Close()
+		}
 	}()
+
+	if verbose && len(segmentFiles) > 1 {
+		fmt.Printf("Found %d segment files\n", len(segmentFiles))
+	}
 
 	// Try to detect format and open
 	var reader io.ReadSeeker
 	var size int64
 
+	// Convert to ReadSeeker slice
+	seekers := make([]io.ReadSeeker, len(segmentFiles))
+	for i, f := range segmentFiles {
+		seekers[i] = f
+	}
+
 	// Try EVF2 first
-	ewf2, err := evf2.OpenEWF(sourceFile)
+	ewf2, err := evf2.OpenEWF(seekers...)
 	if err == nil {
 		reader = ewf2
 		size = ewf2.Size()
@@ -195,11 +285,13 @@ func dumpImage(source, target string, offset, length int64, bufferSize int, verb
 			fmt.Printf("Image size: %d bytes (%.2f GB)\n", size, float64(size)/(1024*1024*1024))
 		}
 	} else {
-		// Reset and try EVF1
-		if _, err := sourceFile.Seek(0, io.SeekStart); err != nil {
-			return fmt.Errorf("failed to seek to start: %w", err)
+		// Reset all files and try EVF1
+		for _, f := range segmentFiles {
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("failed to seek to start: %w", err)
+			}
 		}
-		ewf1, err := evf1.OpenEWF(sourceFile)
+		ewf1, err := evf1.OpenEWF(seekers...)
 		if err != nil {
 			return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
 		}
@@ -274,7 +366,7 @@ func dumpImage(source, target string, offset, length int64, bufferSize int, verb
 			elapsed := time.Since(startTime)
 			rate := float64(copied) / elapsed.Seconds() / (1024 * 1024)
 			progress := float64(copied) / float64(length) * 100
-			fmt.Printf("\rProgress: %.2f%% (%d/%d bytes) - %.2f MB/s", progress, copied, length, rate)
+			fmt.Printf("\rProgress: %.2f%% (%d/%d bytes) - %.2f MB/s\n", progress, copied, length, rate)
 			lastUpdate = time.Now()
 		}
 	}
@@ -495,41 +587,157 @@ func createEVF2Image(source io.Reader, target io.Writer, size int64, metadata Me
 	return written, nil
 }
 
-func showImageInfo(source string) error {
-	// Open source file
-	sourceFile, err := os.Open(source)
+func verifyImage(source string, bufferSize int) error {
+	fmt.Printf("Opening EWF image: %s\n", source)
+
+	// Open all segment files
+	segmentFiles, err := openAllSegments(source)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+		return fmt.Errorf("failed to open segment files: %w", err)
 	}
 	defer func() {
-		_ = sourceFile.Close()
+		for _, f := range segmentFiles {
+			_ = f.Close()
+		}
 	}()
 
+	fmt.Printf("Found %d segment file(s)\n", len(segmentFiles))
+
+	// Convert to ReadSeeker slice
+	seekers := make([]io.ReadSeeker, len(segmentFiles))
+	for i, f := range segmentFiles {
+		seekers[i] = f
+	}
+
+	// Try to detect format and open
+	var reader io.Reader
+	var size int64
+	var format string
+
 	// Try EVF2 first
-	ewf2, err := evf2.OpenEWF(sourceFile)
+	ewf2, err := evf2.OpenEWF(seekers...)
 	if err == nil {
-		showEVF2Info(source, ewf2)
+		reader = ewf2
+		size = ewf2.Size()
+		format = "EVF2 (Ex01)"
+	} else {
+		// Reset all files and try EVF1
+		for _, f := range segmentFiles {
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("failed to seek to start: %w", err)
+			}
+		}
+		ewf1, err := evf1.OpenEWF(seekers...)
+		if err != nil {
+			return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
+		}
+		reader = ewf1
+		size = ewf1.Size()
+		format = "EVF1 (E01)"
+	}
+
+	fmt.Printf("Format: %s\n", format)
+	fmt.Printf("Image size: %d bytes (%.2f GB)\n", size, float64(size)/(1024*1024*1024))
+	fmt.Printf("Buffer size: %d bytes (%.2f MB)\n", bufferSize, float64(bufferSize)/(1024*1024))
+	fmt.Println("\nReading and verifying all data...")
+
+	// Read all data to discard (for performance testing)
+	buffer := make([]byte, bufferSize)
+	var totalRead int64
+	startTime := time.Now()
+	lastUpdate := time.Now()
+
+	for {
+		n, err := reader.Read(buffer)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read error at position %d: %w", totalRead, err)
+		}
+
+		if n == 0 {
+			break
+		}
+
+		totalRead += int64(n)
+
+		// Show progress every second
+		if time.Since(lastUpdate) >= time.Second {
+			elapsed := time.Since(startTime)
+			rate := float64(totalRead) / elapsed.Seconds() / (1024 * 1024)
+			progress := float64(totalRead) / float64(size) * 100
+			fmt.Printf("\rProgress: %.2f%% (%d/%d bytes) - %.2f MB/s", progress, totalRead, size, rate)
+			lastUpdate = time.Now()
+		}
+
+		if err == io.EOF {
+			break
+		}
+	}
+
+	elapsed := time.Since(startTime)
+	rate := float64(totalRead) / elapsed.Seconds() / (1024 * 1024)
+
+	fmt.Printf("\r\n\n=== Verification Complete ===\n")
+	fmt.Printf("Total read: %d bytes (%.2f GB)\n", totalRead, float64(totalRead)/(1024*1024*1024))
+	fmt.Printf("Expected:   %d bytes (%.2f GB)\n", size, float64(size)/(1024*1024*1024))
+	fmt.Printf("Time:       %s\n", elapsed.Round(time.Millisecond))
+	fmt.Printf("Rate:       %.2f MB/s\n", rate)
+
+	if totalRead < size {
+		fmt.Printf("\n⚠️  Warning: Read less data than expected (%d < %d)\n", totalRead, size)
+		fmt.Printf("This might be due to padding at the end of the image.\n")
+	} else {
+		fmt.Printf("\n✅ Successfully read all data!\n")
+	}
+
+	return nil
+}
+
+func showImageInfo(source string) error {
+	// Open all segment files
+	segmentFiles, err := openAllSegments(source)
+	if err != nil {
+		return fmt.Errorf("failed to open segment files: %w", err)
+	}
+	defer func() {
+		for _, f := range segmentFiles {
+			_ = f.Close()
+		}
+	}()
+
+	// Convert to ReadSeeker slice
+	seekers := make([]io.ReadSeeker, len(segmentFiles))
+	for i, f := range segmentFiles {
+		seekers[i] = f
+	}
+
+	// Try EVF2 first
+	ewf2, err := evf2.OpenEWF(seekers...)
+	if err == nil {
+		showEVF2Info(source, ewf2, len(segmentFiles))
 		return nil
 	}
 
-	// Try EVF1
-	if _, err := sourceFile.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("failed to seek to start: %w", err)
+	// Reset all files and try EVF1
+	for _, f := range segmentFiles {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to seek to start: %w", err)
+		}
 	}
-	ewf1, err := evf1.OpenEWF(sourceFile)
+	ewf1, err := evf1.OpenEWF(seekers...)
 	if err != nil {
 		return fmt.Errorf("failed to open as EVF1 or EVF2: %w", err)
 	}
 
-	showEVF1Info(source, ewf1)
+	showEVF1Info(source, ewf1, len(segmentFiles))
 	return nil
 }
 
-func showEVF1Info(source string, reader *evf1.EWFReader) {
+func showEVF1Info(source string, reader *evf1.EWFReader, segmentCount int) {
 	fmt.Printf("EWF Image Information\n")
 	fmt.Printf("=====================\n\n")
 	fmt.Printf("File: %s\n", filepath.Base(source))
 	fmt.Printf("Format: EVF1 (E01)\n")
+	fmt.Printf("Segments: %d\n", segmentCount)
 	fmt.Printf("Size: %d bytes (%.2f GB)\n", reader.Size(), float64(reader.Size())/(1024*1024*1024))
 	fmt.Printf("Chunk Size: %d bytes\n", reader.ChunkSize)
 	fmt.Printf("\nMetadata:\n")
@@ -542,11 +750,12 @@ func showEVF1Info(source string, reader *evf1.EWFReader) {
 	}
 }
 
-func showEVF2Info(source string, reader *evf2.EWFReader) {
+func showEVF2Info(source string, reader *evf2.EWFReader, segmentCount int) {
 	fmt.Printf("EWF Image Information\n")
 	fmt.Printf("=====================\n\n")
 	fmt.Printf("File: %s\n", filepath.Base(source))
 	fmt.Printf("Format: EVF2 (Ex01)\n")
+	fmt.Printf("Segments: %d\n", segmentCount)
 	fmt.Printf("Size: %d bytes (%.2f GB)\n", reader.Size(), float64(reader.Size())/(1024*1024*1024))
 	fmt.Printf("Chunk Size: %d bytes\n", reader.ChunkSize)
 	fmt.Printf("\nMetadata:\n")

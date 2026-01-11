@@ -145,10 +145,31 @@ func (ewf *EWFReader) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 
 	bufOff := off % int64(sectorSize)
-	copyLength := shared.MinUint32(uint32(len(buf)-int(bufOff)), uint32(length))
-	n = copy(p, buf[bufOff:bufOff+int64(copyLength)])
 
-	return
+	// Ensure we don't go out of bounds
+	if int(bufOff) >= len(buf) {
+		if err == io.EOF {
+			return 0, io.EOF
+		}
+		return 0, nil
+	}
+
+	copyLength := shared.MinUint32(uint32(len(buf)-int(bufOff)), uint32(length))
+	endPos := bufOff + int64(copyLength)
+
+	// Safety check to prevent panic
+	if int(endPos) > len(buf) {
+		endPos = int64(len(buf))
+	}
+
+	n = copy(p, buf[bufOff:endPos])
+
+	// Return EOF only if we couldn't read any data
+	if n == 0 && err == io.EOF {
+		return 0, io.EOF
+	}
+
+	return n, nil
 }
 
 // Seek implements vfs.FileDescriptionImpl.Seek.
@@ -206,7 +227,7 @@ func (ewf *EWFReader) calculateIndex(sector int64) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if sector > seg.sectorOffset+seg.sectorCount {
+		if sector >= seg.sectorOffset+seg.sectorCount {
 			continue
 		}
 		return i, nil
