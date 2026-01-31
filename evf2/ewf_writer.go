@@ -45,6 +45,8 @@ type EWFWriter struct {
 	Segment       *EWFSegment
 	SegmentOffset uint32
 	ChunkSize     uint32
+
+	chunkCount uint64
 }
 
 type EWFCreator struct {
@@ -282,7 +284,8 @@ func (ewf *EWFWriter) writeData(p []byte) error {
 	}
 	ewf.dataPadSize += padSize
 
-	ewf.Segment.addTableEntry(cpos, uint32(len(bufc)), flag)
+	ewf.Segment.addTableEntry(ewf.chunkCount, cpos, uint32(len(bufc)), flag)
+	ewf.chunkCount++
 
 	_, err = ewf.md5Hasher.Write(p)
 	if err != nil {

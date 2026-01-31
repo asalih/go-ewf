@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"math"
 	"sync"
 
 	"github.com/asalih/go-ewf/shared"
@@ -232,10 +231,11 @@ func (ewf *EWFWriter) writeData(p []byte) error {
 		return err
 	}
 
-	if position > math.MaxUint32 {
-		return fmt.Errorf("position overflow for table: %v", position)
+	// EVF1 table entries only store a 31-bit relative offset; segment/table logic
+	// will handle BaseOffset and splitting as needed.
+	if err := ewf.Segment.addTableEntry(position); err != nil {
+		return fmt.Errorf("failed to add table entry: %w", err)
 	}
-	ewf.Segment.addTableEntry(uint32(position))
 	ewf.Segment.Volume.Data.IncrementChunkCount()
 
 	_, err = ewf.md5Hasher.Write(p)

@@ -213,14 +213,45 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	return buf, nil
 }
 
-func (seg *EWFSegment) addTableEntry(offset uint32) {
+// addTableEntry records a chunk at absolute file offset `absoluteOffset`.
+//
+// EVF1 table entries only have 31 bits for the offset (MSB is compression flag),
+// so we must use the table header `BaseOffset` and store a 31-bit relative offset.
+func (seg *EWFSegment) addTableEntry(absoluteOffset int64) error {
+	if absoluteOffset < 0 {
+		return fmt.Errorf("invalid negative chunk offset: %d", absoluteOffset)
+	}
+
 	t := seg.Tables[len(seg.Tables)-1]
+
+	// If table is full, start a new one.
 	if t.Header.NumEntries >= maxTableLength {
 		t = newTable()
 		seg.Tables = append(seg.Tables, t)
 	}
+
+	// Initialize BaseOffset at the first entry of the table.
+	if t.Header.NumEntries == 0 {
+		t.Header.BaseOffset = uint64(absoluteOffset)
+	}
+
+	base := t.Header.BaseOffset
+	rel := uint64(absoluteOffset) - base
+
+	// Entry offset is 31-bit (MSB reserved for flags). If relative offset overflows,
+	// start a new table with a new BaseOffset.
+	if rel > 0x7FFFFFFF {
+		t = newTable()
+		t.Header.BaseOffset = uint64(absoluteOffset)
+		seg.Tables = append(seg.Tables, t)
+		base = t.Header.BaseOffset
+		rel = uint64(absoluteOffset) - base // should be 0
+	}
+
 	t.Header.NumEntries++
-	//its always compressed
-	e := offset | (1 << 31)
+	// data is always written as zlib-compressed in this writer
+	e := uint32(rel) | (1 << 31)
 	t.Entries.Data = append(t.Entries.Data, e)
+
+	return nil
 }

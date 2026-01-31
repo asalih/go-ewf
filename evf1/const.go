@@ -10,9 +10,11 @@ var (
 	fieldDelim   = []byte{'\t'}
 )
 
-const (
-	maxTableLength = 16375
-)
+const defaultMaxTableLength uint32 = 16375
+
+// maxTableLength controls how many chunk entries go into a single table section.
+// Kept as a var so tests can lower it to exercise multi-table behavior.
+var maxTableLength uint32 = defaultMaxTableLength
 
 const (
 	DefaultChunkSize = 32768

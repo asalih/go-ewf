@@ -18,6 +18,12 @@ const (
 	Uint32Size       = 4
 )
 
+const defaultMaxTableLength uint32 = 16375
+
+// maxTableLength controls how many chunk entries go into a single table section.
+// Kept as a var so tests can lower it to exercise multi-table behavior.
+var maxTableLength uint32 = defaultMaxTableLength
+
 type EWFSectionType uint32
 
 const (

@@ -223,9 +223,21 @@ func (seg *EWFSegment) ReadSectors(sector int64, count int) ([]byte, error) {
 	return buf, nil
 }
 
-// IMPORTANT
-func (seg *EWFSegment) addTableEntry(offset int64, size uint32, flag uint32) {
+// addTableEntry records a chunk in the current table, splitting tables to keep
+// memory bounded and to ensure table headers have correct FirstChunkNumber.
+func (seg *EWFSegment) addTableEntry(chunkNumber uint64, offset int64, size uint32, flag uint32) {
 	t := seg.Tables[len(seg.Tables)-1]
+
+	// If table is full, start a new one.
+	if t.Header.NumEntries >= maxTableLength {
+		t = newTable()
+		seg.Tables = append(seg.Tables, t)
+	}
+
+	// Initialize FirstChunkNumber at the first entry.
+	if t.Header.NumEntries == 0 {
+		t.Header.FirstChunkNumber = chunkNumber
+	}
 
 	t.Header.NumEntries++
 

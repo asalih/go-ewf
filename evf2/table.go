@@ -146,7 +146,7 @@ func (d *EWFTableSection) Encode(ewf io.Writer, previousDescriptorPosition int64
 	}
 	dataN, err = ewf.Write(headerData)
 	if err != nil {
-		return 0, 0, nil
+		return 0, 0, err
 	}
 
 	desc := NewEWFSectionDescriptorData(EWF_SECTION_TYPE_SECTOR_TABLE)
@@ -303,25 +303,25 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, er
 
 	allBuf := make([]byte, 0, count*uint64(sectorSize))
 
-	tableSector := sector - uint64(ets.SectorOffset)
-	tableChunk := tableSector / uint64(chunkSectorCount)
-
+	// `sector` is segment-relative sector number.
+	curSector := sector
 	for count > 0 {
-		tableSectorOffset := tableSector % uint64(chunkSectorCount)
-		chunkRemainingSectors := uint64(chunkSectorCount) - tableSectorOffset
+		sectorOffsetInChunk := curSector % uint64(chunkSectorCount)
+		chunkRemainingSectors := uint64(chunkSectorCount) - sectorOffsetInChunk
 		tableSectors := uint64(math.Min(float64(chunkRemainingSectors), float64(count)))
 
-		chunkPos := tableSectorOffset * uint64(sectorSize)
+		// Global chunk number within the segment.
+		globalChunk := int64(curSector / uint64(chunkSectorCount))
+		entryIndex := globalChunk - int64(ets.Header.FirstChunkNumber)
 
-		// Convert table-relative chunk to entry array index by accounting for FirstChunkNumber
-		entryIndex := int64(tableChunk) - int64(ets.Header.FirstChunkNumber)
+		chunkPos := sectorOffsetInChunk * uint64(sectorSize)
 
 		buf, err := ets.readChunk(entryIndex)
 		if err != nil {
 			return buf, err
 		}
 
-		// Calculate chunkEnd based on actual buffer size
+		// Calculate chunkEnd based on actual buffer size.
 		chunkEnd := chunkPos + (tableSectors * uint64(sectorSize))
 		if chunkEnd > uint64(len(buf)) {
 			chunkEnd = uint64(len(buf))
@@ -334,9 +334,7 @@ func (ets *EWFTableSection) readSectors(sector uint64, count uint64) ([]byte, er
 		allBuf = append(allBuf, buf...)
 
 		count -= tableSectors
-		tableSector += tableSectors
-		// Recalculate tableChunk from updated tableSector instead of incrementing
-		tableChunk = tableSector / uint64(chunkSectorCount)
+		curSector += tableSectors
 	}
 
 	return allBuf, nil
